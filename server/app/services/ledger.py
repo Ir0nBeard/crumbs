@@ -1,7 +1,7 @@
 """Ledger service — journey issuance, conversion recording, verification,
-revocation, self-referral velocity (spec D.1 event flow + D.3 fraud controls).
+revocation, and self-referral velocity controls.
 
-Every mutation appends an audit_events row (append-only, spec D.4).
+Every mutation appends an audit_events row (append-only).
 """
 from __future__ import annotations
 
@@ -105,7 +105,7 @@ def issue_journey(
     rate_limiter,
     settings=None,
 ) -> dict:
-    """Consent-gated receipt issuance (spec A.1.4 / E.2).
+    """Consent-gated receipt issuance (docs/ATTRIBUTION_PROTOCOL.md §6).
 
     No receipt is issued without a recorded lawful basis. Returns:
       {"receipt": "<canonical receipt string>", "journey_id": ..., "consent": {...}}
@@ -126,7 +126,7 @@ def issue_journey(
             501,
         )
 
-    # Rate limit issuance per IP (spec D.3 — fake journey control)
+    # Rate limit issuance per IP (fake-journey control)
     if client_ip:
         allowed, _count = rate_limiter.hit(
             "journeys", client_ip, settings.issuance_rate_limit, 3600
@@ -151,8 +151,8 @@ def issue_journey(
         raise LedgerError(E_REVOKED_AGENT, "agent is revoked", 403)
 
     jid = P_JOURNEY + make_ulid()
-    # IP/UA stored as HASHES only (privacy: raw IPs/UAs are PII — spec A.5
-    # "issuing IP/UA hashes"; P3 C-M4). Truncated to 64 chars for storage.
+    # IP/UA stored as HASHES only (raw IPs/UAs are PII). Truncated to 64 chars
+    # for storage.
     ip_hash = None
     ua_hash = None
     if client_ip:
@@ -233,9 +233,9 @@ def issue_receipt_for_journey(
     signing: SigningService,
     settings=None,
 ) -> dict:
-    """Issue an ADDITIONAL receipt on an EXISTING active journey (spec A.2:
-    receipts are per-journey; one receipt = one conversion, so multi-merchant
-    journeys request a new receipt per merchant visit). Rides the consent
+    """Issue an ADDITIONAL receipt on an EXISTING active journey (receipts are
+    per-journey; one receipt = one conversion, so multi-merchant journeys
+    request a new receipt per merchant visit). Rides the consent
     already recorded on the journey.
     """
     settings = settings or get_settings()
@@ -306,7 +306,7 @@ def record_conversion(
     rate_limiter,
     settings=None,
 ) -> dict:
-    """Record a stamped conversion (spec C.2.5 + D.1).
+    """Record a stamped conversion (docs/ATTRIBUTION_PROTOCOL.md §4.3).
 
     Pipeline: parse -> signature -> kid -> expiry -> revocation -> nonce replay
     -> journey/agent checks -> budget -> self-referral/velocity -> idempotency
@@ -319,7 +319,7 @@ def record_conversion(
     except ValueError as exc:
         raise LedgerError(E_MALFORMED, str(exc)) from exc
 
-    # 1. signature + kid (type confusion surfaces as MALFORMED, never 500 — P3 C-M1)
+    # 1. signature + kid (type confusion surfaces as MALFORMED, never a 500)
     ok, reason = signing.verify_detail(payload)
     if not ok:
         code = E_UNKNOWN_KID if reason == "unknown_kid" else E_BAD_SIGNATURE
@@ -348,7 +348,7 @@ def record_conversion(
         raise LedgerError(E_UNKNOWN_RECEIPT, "receipt not found in ledger", 404)
 
     # 4. idempotency — unique (rid, oid); checked BEFORE nonce consumption so
-    #    that safe retries of an already-recorded conversion succeed (spec A.6.4)
+    #    that safe retries of an already-recorded conversion succeed (idempotency)
     existing = db.execute(
         select(Conversion).where(Conversion.rid == rid, Conversion.oid == oid)
     ).scalar_one_or_none()
@@ -373,9 +373,10 @@ def record_conversion(
                           f"conversion surface {surface!r} != issuance surface {payload['sf']!r}")
     _check_self_referral(db, aid, mid, program, settings)
 
-    # 8. budgets (spec A.6.2) — conversions, distinct merchants, cart value.
-    #    ATOMIC conditional UPDATE closes the check-then-increment TOCTOU
-    #    (P3 D-L1): the row only advances when ALL counters have headroom.
+    # 8. budgets (docs/ATTRIBUTION_PROTOCOL.md §5) — conversions, distinct
+    #    merchants, cart value. ATOMIC conditional UPDATE closes the
+    #    check-then-increment TOCTOU: the row only advances when ALL counters
+    #    have headroom.
     cart_usd = _to_usd_minor(cart_value_minor_units, currency, settings)
     merchant_delta = 0 if mid in _merchant_set(db, jid) else 1
     budget_result = db.execute(
@@ -400,9 +401,10 @@ def record_conversion(
                               "cart_value_usd": journey.max_cart_value_usd,
                           }})
 
-    # 9. nonce replay (spec A.6.1) — consumed only AFTER every reject-check so
-    #    a failed attempt never burns the receipt (P3 C-M2). Grace extends past
-    #    expiry, so a positive remaining window is guaranteed here.
+    # 9. nonce replay (docs/ATTRIBUTION_PROTOCOL.md §5) — consumed only AFTER
+    #    every reject-check, so a failed attempt never burns the receipt.
+    #    Grace extends past expiry, so a positive remaining window is
+    #    guaranteed here.
     ttl_grace = int(payload["exp"]) + settings.nonce_grace_seconds - int(time.time())
     if ttl_grace <= 0:
         raise LedgerError(E_EXPIRED, "receipt expired")
@@ -424,7 +426,8 @@ def record_conversion(
         order_status="pending",
     )
     db.add(conversion)
-    # Durable nonce fallback row (mirrors the Redis/memory store — P3 C-L2)
+    # Durable nonce fallback row (mirrors the Redis/memory store — guarantees
+    # nonce dedup survives a single-process restart on SQLite)
     from datetime import datetime, timedelta, timezone
 
     db.add(UsedNonce(
@@ -490,7 +493,7 @@ def _merchant_set(db: Session, jid: str) -> set[str]:
 
 def verify_receipt(db: Session, receipt_str: str, signing: SigningService,
                    nonce_store, settings=None) -> dict:
-    """GET /v1/verify — full status check (spec A.4/A.6).
+    """GET /v1/verify — full status check (docs/ATTRIBUTION_PROTOCOL.md §5).
 
     `valid` = the receipt is redeemable RIGHT NOW (signature ok, not expired,
     not revoked, nonce unused). Journey budget state is attached whenever the
@@ -543,7 +546,7 @@ def verify_receipt(db: Session, receipt_str: str, signing: SigningService,
 # ---------------------------------------------------------------------------
 
 def revoke(db: Session, kind: str, entity_id: str, reason: str, actor: str = "admin") -> None:
-    """Revoke a receipt / journey / agent (spec A.6.3)."""
+    """Revoke a receipt / journey / agent."""
     if kind == "receipt":
         db.merge(RevokedReceipt(rid=entity_id, reason=reason, by=actor))
         r = db.get(Receipt, entity_id)

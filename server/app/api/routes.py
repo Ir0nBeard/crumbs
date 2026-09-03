@@ -1,4 +1,4 @@
-"""FastAPI routes — v1 API (spec C.2 + D.1).
+"""FastAPI routes — v1 API (see docs/ATTRIBUTION_PROTOCOL.md).
 
 Endpoints:
   POST   /v1/journeys         consent-gated receipt issuance
@@ -127,7 +127,7 @@ def create_conversion(
     settings=Depends(_settings),
 ):
     # Merchant API key gate (optional in v0.1; empty CRUMBS_MERCHANT_API_KEY = open).
-    # Constant-time compare (P3 C-M11).
+    # Constant-time compare so timing does not leak key validity.
     import secrets
 
     if settings.merchant_api_key and not secrets.compare_digest(
@@ -135,7 +135,7 @@ def create_conversion(
     ):
         raise HTTPException(401, detail={"code": "UNAUTHORIZED", "message": "bad merchant key"})
     expected_key = f"{body.receipt and _rid_from(body.receipt)}:{body.order_id}"
-    # Idempotency-Key must be "<rid>:<oid>" (spec C.2.5) — validate when supplied
+    # Idempotency-Key must be "<rid>:<oid>" (docs/ATTRIBUTION_PROTOCOL.md §4.3) — validate when supplied
     if idempotency_key and idempotency_key != expected_key:
         raise HTTPException(
             422,
@@ -165,7 +165,7 @@ def create_conversion(
         return result
     except ledger.LedgerError as exc:
         if exc.code == ledger.E_IDEMPOTENT:
-            # Safe retry: return the existing conversion with HTTP 200 (spec A.6.4)
+            # Safe retry: return the existing conversion with HTTP 200 (idempotent)
             from fastapi.responses import JSONResponse
 
             return JSONResponse(status_code=200, content={**exc.extra, "idempotent": True})
@@ -185,7 +185,8 @@ def _rid_from(receipt_str: str) -> str:
 @router.get("/verify")
 def verify(receipt: str, request: Request, db: Session = Depends(get_db)):
     """GET variant (query string) — kept for diagnostics/back-compat; prefer
-    POST /v1/verify so bearer receipts never ride URLs (P3 D-M6)."""
+    POST /v1/verify so bearer receipts never ride URLs
+    (docs/ATTRIBUTION_PROTOCOL.md §5)."""
     return ledger.verify_receipt(
         db,
         receipt,
@@ -201,7 +202,7 @@ class VerifyRequest(BaseModel):
 @router.post("/verify")
 def verify_post(body: VerifyRequest, request: Request, db: Session = Depends(get_db)):
     """POST variant — the canonical verify call; receipt travels in the body,
-    never in a query string (P3 D-M6)."""
+    never in a query string (docs/ATTRIBUTION_PROTOCOL.md §5)."""
     return ledger.verify_receipt(
         db,
         body.receipt,
@@ -219,7 +220,7 @@ async def order_webhook(
     db: Session = Depends(get_db),
     settings=Depends(_settings),
 ):
-    """Merchant signed order confirmation (spec A.6.8).
+    """Merchant signed order confirmation (docs/ATTRIBUTION_PROTOCOL.md §4.4).
 
     Auth: X-Crumbs-Signature = HMAC-SHA256(merchant webhook secret, raw body),
     hex-encoded. The merchant is resolved from the conversion reference so the
@@ -275,8 +276,9 @@ def payout_batch(
     db: Session = Depends(get_db),
     settings=Depends(_settings),
 ):
-    """Schedule payout records for finalized conversions. Money-adjacent — the
-    admin token is required (P3 C-M6); scheduling is still records-only."""
+    """Schedule payout records for finalized conversions. Money-adjacent — an
+    admin token is required (endpoints fail closed while it is unset);
+    scheduling is still records-only."""
     import secrets
 
     if not settings.admin_token or not secrets.compare_digest(

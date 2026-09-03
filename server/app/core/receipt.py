@@ -1,6 +1,7 @@
 """Signed-attribution receipt v1 — format, signing, verification.
 
-Spec: p5b-wedge-spec.md section A (fields, canonicalization, signature, size).
+Format reference: docs/ATTRIBUTION_PROTOCOL.md (public). This module is the
+canonical implementation of the receipt wire format.
 A receipt is an ENTITLEMENT (evidence of a future commission claim), NOT stored
 value: it carries ids, surface, TTL and a nonce — never cart value, order id or
 payout details (those are stamped at conversion, server-side).
@@ -25,7 +26,7 @@ Payload fields (canonical JSON, JCS per RFC 8785, flat object of str/int):
               base64url (43 chars) — appended as the LAST key so that the signed
               input is canonical(payload) with sig removed.
 
-Total wire size ~300 bytes (spec A.3), well under the 1 KB cookie design rule.
+Total wire size ~300 bytes, well under the 1 KB cookie design rule.
 """
 from __future__ import annotations
 
@@ -39,10 +40,10 @@ from .jcs import canonical_json
 from .ulid import make_ulid
 
 FORMAT_VERSION = 1
-DEFAULT_TTL_SECONDS = 30 * 24 * 3600  # 30 days (spec A.2)
+DEFAULT_TTL_SECONDS = 30 * 24 * 3600  # 30 days (docs/ATTRIBUTION_PROTOCOL.md §2)
 SURFACES = ("browser", "api", "chat")
 
-# Prefixes per spec A.2
+# Id prefixes (docs/ATTRIBUTION_PROTOCOL.md §2)
 P_RECEIPT = "rct_"
 P_JOURNEY = "jrn_"
 P_AGENT = "ag_"
@@ -55,7 +56,7 @@ def new_nonce() -> str:
 
 
 def new_agent_id() -> str:
-    """ag_ + 21 chars base32 randomness (~24 chars total, spec A.2)."""
+    """ag_ + 21 chars base32 randomness (~24 chars total)."""
     raw = base64.b32encode(os.urandom(13)).decode("ascii").rstrip("=").lower()
     return P_AGENT + raw
 

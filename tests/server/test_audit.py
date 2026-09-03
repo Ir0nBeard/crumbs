@@ -1,4 +1,4 @@
-"""Audit trail — append-only audit_events on every mutation (spec D.4)."""
+"""Audit trail — append-only audit_events on every mutation."""
 from __future__ import annotations
 
 from sqlalchemy import func, select

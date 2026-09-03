@@ -1,40 +1,51 @@
 # Crumbs for Shopify — custom-app pilot scaffold (v0.1)
 
-Local-only scaffold. **No app registered, no store listing** (OPSEC: gated on
-domain + GitHub + explicit go). This is the *custom distribution* shape from
-shopify.dev/docs/apps/distribution: single-store/Plus pilots, no app-store
-approval, no Shopify Billing — the right pilot path for the first merchants.
+A zero-dependency Node scaffold implementing the Shopify **OAuth token-exchange
+flow** for a *custom app* (single-store/Plus pilots, per
+shopify.dev/docs/apps/distribution — no app-store approval, no Shopify
+Billing). The app confirms orders for attribution: it reads order status so the
+Crumbs ledger can finalize attributed conversions.
 
-## Run
+**Status:** v0.1 scaffold. No app is registered yet and there is no store
+listing. When you're ready, `APP_REVIEW_CHECKLIST.md` is a neutral
+app-review-readiness checklist for the public listing path.
+
+## Run (local development)
 
 ```sh
-export SHOPIFY_API_KEY=... SHOPIFY_API_SECRET=...   # from a real custom app (future)
-export SHOPIFY_REDIRECT_URI=http://localhost:3000/callback
+export SHOPIFY_API_KEY=... SHOPIFY_API_SECRET=...   # from a custom app you register
+export SHOPIFY_SCOPES=read_orders,read_products
 node app.js
-# open http://localhost:3000/install?shop=<your-shop>.myshopify.com
 ```
+
+The console prints the local install URL and the port (`PORT`, default 3000).
+Open the `/install?shop=<your-shop>.myshopify.com` URL from a browser to walk
+the OAuth flow. In production the app must be served over HTTPS and
+`SHOPIFY_REDIRECT_URI` set to your public callback URL (Shopify requires it to
+match exactly what you configured in the app settings).
 
 ## What is implemented (v0.1)
 
-* `/install` — validates the shop param, redirects to Shopify OAuth authorize
-* `/callback` — exchanges the auth code for an access token (POST
-  `/admin/oauth/access_token`), stores it in-memory
+* `/install` — validates the shop param against the `*.myshopify.com`
+  allowlist, verifies the install HMAC when the app secret is configured, and
+  redirects to Shopify OAuth authorize with a per-install `state`
+* `/callback` — validates the shop (allowlist + exact-match state binding) and
+  the callback HMAC, then exchanges the auth code for an access token
+  (`POST /admin/oauth/access_token`)
 * `/health` — liveness
 
-Zero dependencies: Node >= 18 global fetch + `node:http`.
+Secrets are read from the environment only — never committed. The access token
+is held in memory (see stubs).
 
-## What is STUBBED / next
+## What is stubbed / next
 
-* **HMAC verification** of install/callback requests (Shopify signs every
-  request with your API secret) — TODO before any real pilot
-* **State/CSRF** — per-install random state param + validation
-* **Secure token persistence + rotation** — in-memory Map today
+* **Secure token persistence + rotation** — in-memory Map today; production
+  needs encrypted storage keyed by shop
 * **Webhooks** — register `orders/updated` (and `app/uninstalled`) so the
   ledger's merchant order webhook can be fed for conversion finalization
-* **Theme SDK injection** — consent-gated script tag for the storefront
-  (the Crumbs SDK, vendored or SRI-pinned — never raw remote code)
-* **App review checklist** — see `APP_REVIEW_CHECKLIST.md` for the public
-  listing path (future, approval-gated)
+* **Theme SDK injection** — consent-gated script tag for the storefront (the
+  Crumbs SDK, vendored or SRI-pinned — never raw remote code)
+* **App review readiness** — see `APP_REVIEW_CHECKLIST.md`
 
 ## Data posture
 

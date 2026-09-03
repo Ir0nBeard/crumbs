@@ -87,9 +87,9 @@ def test_tool_call_to_unreachable_ledger_reports_cleanly():
 
 
 def test_verify_receipt_posts_to_v1_verify():
-    """P3 N4: verify_receipt POSTs the bearer receipt in the BODY — never a
-    GET query string (D-M6-class regression guard). The fake ledger asserts
-    the exact request shape the MCP server must emit."""
+    """verify_receipt POSTs the bearer receipt in the BODY — never a GET query
+    string (regression guard). The fake ledger asserts the exact request shape
+    the MCP server must emit."""
     import http.server
     import threading
 

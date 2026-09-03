@@ -103,7 +103,7 @@ def test_conversion_idempotent_retry(client, seeded_merchant, issue_receipt):
 
 
 def test_conversion_rejects_reused_nonce_different_order(client, seeded_merchant, issue_receipt):
-    """Same receipt, different oid -> nonce replay rejection (spec A.6.1)."""
+    """Same receipt, different oid -> nonce replay rejection."""
     journey = issue_receipt()
     assert stamp(client, journey["receipt"], oid="ord_a", value=100).status_code == 201
     resp = stamp(client, journey["receipt"], oid="ord_b", value=100)
@@ -266,7 +266,7 @@ def test_webhook_requires_timestamp(client, seeded_merchant, issue_receipt):
 
 
 def test_webhook_rejects_stale_timestamp(client, seeded_merchant, issue_receipt):
-    """Signed-body replay window (P3 D-L3): t beyond tolerance -> STALE_WEBHOOK."""
+    """Signed-body replay window: t beyond tolerance -> STALE_WEBHOOK."""
     journey = issue_receipt()
     conv = stamp(client, journey["receipt"], oid="ord_stale", value=1000)
     cid = conv.json()["conversion_id"]
@@ -277,7 +277,7 @@ def test_webhook_rejects_stale_timestamp(client, seeded_merchant, issue_receipt)
 
 
 def test_webhook_requires_conversion_id(client, seeded_merchant, issue_receipt):
-    """oid-only resolution is ambiguous — conversion_id required (P3 D-L5)."""
+    """oid-only resolution is ambiguous — conversion_id required."""
     journey = issue_receipt()
     stamp(client, journey["receipt"], oid="ord_amb", value=1000)
     resp = post_webhook(client, webhook_body(order_id="ord_amb"))
@@ -286,7 +286,7 @@ def test_webhook_requires_conversion_id(client, seeded_merchant, issue_receipt):
 
 
 def test_webhook_rejects_invalid_transition(client, seeded_merchant, issue_receipt):
-    """Monotonic state machine (P3 D-L3): cancelled is terminal."""
+    """Monotonic state machine: cancelled is terminal."""
     journey = issue_receipt()
     conv = stamp(client, journey["receipt"], oid="ord_mono", value=1000)
     cid = conv.json()["conversion_id"]
@@ -319,7 +319,7 @@ def test_webhook_cancelled_voids_conversion(client, seeded_merchant, issue_recei
 
 
 def test_webhook_cart_padding_flagged(client, seeded_merchant, issue_receipt):
-    """Conversion-padding control (spec A.6.8): inflated cart vs confirmed order."""
+    """Conversion-padding control: inflated cart vs confirmed order."""
     journey = issue_receipt()
     conv = stamp(client, journey["receipt"], oid="ord_pad", value=100_00)
     cid = conv.json()["conversion_id"]

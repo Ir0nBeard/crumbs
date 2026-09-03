@@ -3,9 +3,11 @@
  *
  * Usage (Node / bundlers):
  *   import { createCrumbs } from "@crumbs/sdk";
- *   const crumbs = createCrumbs({ merchantId: "m_...", apiUrl: "https://api.crumbs.dev" });
+ *   const crumbs = createCrumbs({ merchantId: "m_...", apiUrl: process.env.CRUMBS_LEDGER_URL });
  *   await crumbs.setConsent("granted");
  *   const journey = await crumbs.requestJourney();
+ *
+ * Copyright (c) 2026 Crumbs contributors. SPDX-License-Identifier: MIT.
  *
  * The implementation lives in src/crumbs-core.cjs (UMD factory). Under Node ESM
  * the file is loaded as CommonJS (module.exports path); in browsers the IIFE

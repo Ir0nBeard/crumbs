@@ -141,7 +141,7 @@ test("requestJourney with consent issues and stores the receipt", async () => {
     assert.equal(server.calls.journeys, 1);
     assert.equal(crumbs.getReceipt(), JSON.stringify(RECEIPT));
     assert.equal(crumbs._state.journeyId, RECEIPT.jid);
-    // localStorage holds an id-marker ONLY — never the bearer claim (P3 D-M5)
+    // localStorage holds an id-marker ONLY — never the bearer claim
     const marker = JSON.parse(storage.getItem("crumbs:receipt"));
     assert.deepEqual(Object.keys(marker).sort(), ["aid", "exp", "jid", "rid"]);
     assert.equal(marker.rid, RECEIPT.rid);

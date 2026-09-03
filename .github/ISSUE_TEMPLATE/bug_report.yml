@@ -1,0 +1,46 @@
+name: Bug report
+description: Report a bug in Crumbs (server, SDK, MCP, WordPress plugin, extension, Shopify app)
+title: "[bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. **For security issues, do not
+        file a public issue** — see [SECURITY.md](../../../SECURITY.md).
+  - type: input
+    id: component
+    attributes:
+      label: Component
+      description: Which part? (server / sdk / mcp / ext / wp / shopify)
+      placeholder: e.g. server
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      description: Version tag or commit hash you are running
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the bug and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal, concrete steps — code snippets welcome.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python/Node versions, database (SQLite/Postgres), Redis or not, browser if relevant.
+      render: shell

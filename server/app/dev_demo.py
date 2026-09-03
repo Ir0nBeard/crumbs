@@ -44,7 +44,7 @@ def main() -> None:
     journey = issue_journey(
         db, mid=merchant.mid, surface="browser",
         consent={"basis": "explicit", "ref": "demo"},
-        client_ip="127.0.0.1", user_agent="demo-agent",
+        client_ip="198.51.100.7", user_agent="demo-agent",
         signing=signing, nonce_store=nonces, rate_limiter=limiter, settings=settings,
     )
     print(f"journey: {journey['journey_id']}  rid: {journey['rid']}")

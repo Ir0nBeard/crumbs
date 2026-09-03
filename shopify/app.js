@@ -23,10 +23,11 @@
  *   SHOPIFY_API_KEY / SHOPIFY_API_SECRET / SHOPIFY_SCOPES / SHOPIFY_REDIRECT_URI
  *   PORT (default 3000)
  *
- * OPSEC: real secrets never committed; this file reads them from env only.
- * The P3 N2 hard gate (shop regex on /callback + random state + HMAC) is
- * implemented and active even with empty env — no real creds exist today, but
- * the pattern that could exfiltrate a secret to an arbitrary host is closed.
+ * Secrets are read from the environment only — never committed. The hard gate
+ * (shop regex on /callback + random per-install state + HMAC when the secret
+ * is configured) is implemented and active even with empty env — no real
+ * credentials exist yet, but the pattern that could exfiltrate a secret to an
+ * arbitrary host is closed.
  */
 import http from "node:http";
 import crypto from "node:crypto";
@@ -35,18 +36,21 @@ const {
   SHOPIFY_API_KEY = "",
   SHOPIFY_API_SECRET = "",
   SHOPIFY_SCOPES = "read_orders,read_products",
+  // Local-development default only: Shopify requires the redirect URI to
+  // match the app settings exactly, and production must use the app's public
+  // HTTPS callback URL. Override via SHOPIFY_REDIRECT_URI.
   SHOPIFY_REDIRECT_URI = "http://localhost:3000/callback",
   PORT = 3000,
 } = process.env;
 
-// Allowlisted shop shape (P3 N2): only *.myshopify.com subdomains are ever
-// contacted. Applied on BOTH /install and /callback — never derived from raw
-// user input on the callback path.
+// Only *.myshopify.com subdomains are ever contacted. Applied on BOTH
+// /install and /callback — the callback host is never derived from raw user
+// input.
 const SHOP_REGEX = /^[a-z0-9-]+\.myshopify\.com$/;
 
 // Per-install OAuth state: random nonce bound to the exact shop that started
 // the install. /callback only proceeds when the returned state matches this
-// binding (CSRF protection + exact-match shop validation, P3 N2).
+// binding (CSRF protection + exact-match shop validation).
 const pendingStates = new Map(); // state -> { shop, expiresAt }
 const STATE_TTL_MS = 10 * 60 * 1000;
 
@@ -149,8 +153,8 @@ const server = http.createServer(async (req, res) => {
     const shop = url.searchParams.get("shop");
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state");
-    // Hard gate (P3 N2): the shop host is trusted ONLY after the allowlist
-    // regex AND the exact-match state binding pass — never raw user input.
+    // The shop host is trusted ONLY after the allowlist regex AND the
+    // exact-match state binding pass — never raw user input.
     if (!shop || !SHOP_REGEX.test(shop)) {
       return send(res, 400, { error: "invalid shop parameter" });
     }

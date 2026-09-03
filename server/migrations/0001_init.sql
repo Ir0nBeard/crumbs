@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS merchants (
     owner_id        TEXT,
     status          TEXT NOT NULL DEFAULT 'active',
     -- v0.1 dev: webhook signing secret lives here (guarded dev default).
-    -- Production: store a secret-manager reference only (see docs/BUILD.md).
+    -- Production: store a secret-manager reference only (v0.1 local dev keeps
+    -- the webhook secret on the row; the dev default is rejected outside SQLite).
     webhook_secret  TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );

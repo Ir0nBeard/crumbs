@@ -42,7 +42,8 @@ def create_app() -> FastAPI:
         version="0.1.0",
         description=(
             "Neutral agent-journey attribution + referral-settlement ledger "
-            "(signed-attribution receipts v1). Local MVP build — nothing published."
+            "(signed-attribution receipts v1). v0.1 — early development; "
+            "self-hosted."
         ),
         lifespan=lifespan,
     )

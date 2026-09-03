@@ -1,15 +1,20 @@
 # Crumbs JS SDK (v0.1)
 
-Consent-native agent-journey attribution SDK. Zero dependencies, no build
-step. ~400 lines.
+Consent-native agent-journey attribution SDK for [Crumbs](https://github.com/Ir0nBeard/crumbs).
+Zero dependencies, no build step. Licensed **MIT** (this package stays MIT even
+though the WordPress plugin in the same repository is GPL-2.0-or-later — they
+are separate distribution units; see the repo's LICENSE files).
 
-## Install (not published — local)
+**Status:** v0.1 — not yet published to npm. Until then, use the module/bundle
+directly from the repository (below).
+
+## Install
 
 ```sh
-# copy the folder into your project, then:
-import { createCrumbs } from "./sdk/crumbs.mjs";   // Node / bundlers
+# from the repo (not yet on npm):
+import { createCrumbs } from "./crumbs.mjs";   # Node / bundlers
 # or browser script tag:
-# <script src="sdk/dist/crumbs.iife.js"></script>  -> window.Crumbs.createCrumbs
+# <script src="dist/crumbs.iife.js"></script>  -> window.Crumbs.createCrumbs
 ```
 
 ## Quick start
@@ -18,13 +23,15 @@ import { createCrumbs } from "./sdk/crumbs.mjs";   // Node / bundlers
 import { createCrumbs } from "./crumbs.mjs";
 
 const crumbs = createCrumbs({
-  apiUrl: "https://api.crumbs.dev",   // your ledger (env-gated in real use)
+  // Required — the base URL of the Crumbs ledger instance you run.
+  // There is no default endpoint: configure it explicitly.
+  apiUrl: process.env.CRUMBS_LEDGER_URL,
   merchantId: "m_...",
   surface: "browser",
 });
 
 // 1. consent FIRST (ePrivacy Art 5(3)) — no receipt before this
-crumbs.setConsent("granted");          // or wire consentProvider()
+await crumbs.setConsent("granted");       // or wire consentProvider()
 
 // 2. issue a journey receipt
 const journey = await crumbs.requestJourney();
@@ -32,13 +39,17 @@ const journey = await crumbs.requestJourney();
 // 3. at checkout, stamp the conversion (idempotent)
 const conversion = await crumbs.stampConversion({
   orderId: "ord_123",
-  cartValueMinorUnits: 9900,           // $99.00 in cents — always minor units
+  cartValueMinorUnits: 9900,             // $99.00 in cents — always minor units
   currency: "USD",
 });
 
 // 4. verify any receipt
 const status = await crumbs.verifyReceipt(journey.receipt);
 ```
+
+Calling any network method without an `apiUrl` throws a clear
+`crumbs: apiUrl is required ...` error — nothing silently targets a default
+host.
 
 ## Carriers
 

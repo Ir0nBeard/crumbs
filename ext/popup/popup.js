@@ -9,13 +9,13 @@
  * The active tab's URL is read via `activeTab` (manifest permission) — granted
  * only while the popup is open after you click the extension icon.
  */
-const DEFAULT_VERIFY_API = "https://api.crumbs.dev"; // placeholder — configurable later
-let VERIFY_API = DEFAULT_VERIFY_API;
-// v0.1 ships with the placeholder default. A future version (or an advanced
-// user) can point at a real ledger by setting chrome.storage.sync
-// "crumbs_verify_api" to the base URL, e.g. "https://api.example.com".
+// The ledger base URL is NOT hard-coded: v0.1 ships with no default endpoint,
+// so Verify stays disabled until an operator configures one. Point the viewer
+// at your ledger by setting chrome.storage.sync "crumbs_verify_api" to the
+// ledger's base URL (advanced users / future options page).
+let VERIFY_API = "";
 chrome.storage.sync.get("crumbs_verify_api", ({ crumbs_verify_api: v }) => {
-  if (typeof v === "string" && v) VERIFY_API = v;
+  if (typeof v === "string" && v) VERIFY_API = v.replace(/\/$/, "");
 });
 
 const $ = (id) => document.getElementById(id);
@@ -91,6 +91,11 @@ $("refresh").addEventListener("click", async () => {
 });
 
 $("verify").addEventListener("click", async () => {
+  if (!VERIFY_API) {
+    $("verifyResult").textContent =
+      "no ledger configured — set chrome.storage.sync 'crumbs_verify_api' to your ledger base URL";
+    return;
+  }
   $("verifyResult").textContent = "verifying…";
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const resp = await chrome.tabs.sendMessage(tab.id, { type: "crumbs_collect" });
@@ -103,7 +108,7 @@ $("verify").addEventListener("click", async () => {
     const wire = JSON.stringify(resp.state.receipt); // NOTE: popup stores only ids;
     // a full verify needs the signed wire — see PRIVACY.md §4 (v0.1 viewer limitation)
     // POST /v1/verify — the payload travels in the BODY, never a query string
-    // (bearer-safe pattern, P3 D-M6 / N6).
+    // (bearer-safe pattern; docs/ATTRIBUTION_PROTOCOL.md §5).
     const result = await fetch(VERIFY_API + "/v1/verify", {
       method: "POST",
       headers: { "content-type": "application/json" },

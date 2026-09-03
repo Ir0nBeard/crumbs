@@ -1,6 +1,6 @@
 # Crumbs Journey Viewer — Privacy Disclosure (v0.1)
 
-Last updated: 2026-08-29. This extension is a LOCAL MVP scaffold — it is not
+Last updated: 2026-08-29. This extension is a v0.1 scaffold — it is not yet
 published to any store.
 
 ## 1. What the extension does
@@ -39,7 +39,7 @@ The popup stores only receipt *ids* (rid/jid/aid/exp) — the signed wire form
 lives in the page's SDK storage, which the content script intentionally does
 not copy out. The "Verify" button therefore performs an ids-only check and is
 labeled as such in the UI. Full signed-wire verification from the extension is
-a post-v0.1 item (see docs/BUILD.md).
+a planned post-v0.1 improvement (see the changelog).
 
 ## 5. Consent posture
 
@@ -54,4 +54,4 @@ consent flow already ran.
 Any Chrome Web Store submission would carry: this disclosure, a store privacy
 policy, data-usage declarations (none collected), and per-site opt-in
 documentation — per the MV3 minimal-permission requirements of the store
-program policies. NOT submitted in v0.1.
+program policies. No submission in v0.1.

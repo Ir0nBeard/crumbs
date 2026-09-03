@@ -88,7 +88,7 @@ def test_verify_tampered(client, seeded_merchant, issue_receipt):
 
 
 def test_verify_post_body(client, seeded_merchant, issue_receipt):
-    """POST /v1/verify — the canonical verify call (P3 D-M6)."""
+    """POST /v1/verify — the canonical verify call (receipt in the body)."""
     journey = issue_receipt()
     resp = client.post("/v1/verify", json={"receipt": journey["receipt"]})
     assert resp.status_code == 200

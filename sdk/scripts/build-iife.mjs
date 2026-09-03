@@ -18,6 +18,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const core = readFileSync(resolve(here, "../src/crumbs-core.cjs"), "utf8");
 
 const banner = `/*! Crumbs attribution SDK v0.1.0 — IIFE bundle (generated from src/crumbs-core.js).
+ * Copyright (c) 2026 Crumbs contributors. SPDX-License-Identifier: MIT.
  * Consent-native agent-journey attribution. No dependencies. */
 `;
 

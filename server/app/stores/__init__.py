@@ -17,7 +17,7 @@ log = logging.getLogger("crumbs.stores")
 
 
 class UsedNonceStore:
-    """Reject replay of a receipt's nonce for TTL + grace (spec A.6.1)."""
+    """Reject replay of a receipt's nonce for TTL + grace."""
 
     def mark_used(self, rid: str, nc: str, ttl_seconds: int) -> bool:
         """Atomically claim the nonce. Returns True if newly claimed, False if replay."""
@@ -88,7 +88,7 @@ class MemoryRateLimiter(RateLimiter):
 
 
 class RedisNonceStore(UsedNonceStore):
-    """Redis SET NX EX — the production store (bloom filter at scale, spec D.5)."""
+    """Redis SET NX EX — the production store (bloom filter at scale, later)."""
 
     def __init__(self, redis_client) -> None:
         self._r = redis_client
@@ -123,7 +123,7 @@ def _sha256(s: str) -> str:
 def build_stores():
     """Create (nonce_store, rate_limiter) from settings; Redis when configured.
 
-    FAIL-CLOSED (P3 D-L2): when CRUMBS_REDIS_URL is configured but unreachable,
+    FAIL-CLOSED: when CRUMBS_REDIS_URL is configured but unreachable,
     the process refuses to start rather than silently degrading to memory
     (which would reset nonce dedup on restart / across workers).
     """

@@ -1,4 +1,4 @@
-"""HMAC signing service with kid key rotation (spec A.2 / A.6.5).
+"""HMAC signing service with kid key rotation.
 
 Keys are held server-side only. kid identifies the key version; receipts are
 signed with the CURRENT issuance kid, and verification accepts any known kid
@@ -62,7 +62,8 @@ class SigningService:
 
     def verify_detail(self, payload: dict) -> tuple[bool, str]:
         """Verify and explain failure: (ok, "unknown_kid" | "bad_signature" |
-        "malformed"). Type confusion on kid/exp never raises (P3 C-M1)."""
+        "malformed"). Malformed kid/exp inputs never raise — they fail closed
+        as verification failures."""
         from .core.receipt import verify_signature
 
         kid = self.key_id_of(payload)

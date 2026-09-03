@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name:       Crumbs Attribution
- * Plugin URI:        https://crumbs.dev
+ * Plugin URI:        https://github.com/Ir0nBeard/crumbs
  * Description:       Consent-native agent-journey attribution for WordPress/WooCommerce merchants. Issues signed attribution receipts (server-side), stamps attributed conversions, and surfaces the checkout to WebMCP agents. The SDK is vendored — no third-party remote code. No tracking without consent.
  * Version:           0.1.0
  * Author:            Crumbs
@@ -9,8 +9,9 @@
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain:       crumbs-attribution
  *
- * Local MVP scaffold. NOT published to wordpress.org (gated on domain + GitHub
- * + explicit go per project OPSEC). Complies with the plugin directory rules
+ * v0.1 scaffold — not yet listed in the WordPress.org plugin directory. This
+ * plugin directory is GPL-2.0-or-later (WordPress.org directory requirement);
+ * the rest of the Crumbs repo is MIT. Complies with the plugin directory rules
  * by design: GPL-compatible header, SDK VENDORED inside the plugin, no
  * executable code via third-party systems, no tracking without consent.
  *
@@ -28,31 +29,32 @@ define( 'CRUMBS_ATTRIBUTION_DIR', plugin_dir_path( __FILE__ ) );
  * Settings (stored as WP options; admin UI on the Settings page).
  *
  *   crumbs_merchant_id   merchant id (m_...) issued by the ledger
- *   crumbs_api_url       ledger base URL (default https://api.crumbs.dev)
+ *   crumbs_api_url       ledger base URL — REQUIRED, no default endpoint
  *   crumbs_api_key       optional X-Crumbs-Key for conversion posts —
- *                        v0.1 DEV-ONLY: stored plaintext in wp_options and
+ *                        v0.1 dev-only: stored plaintext in wp_options and
  *                        NOT yet sent anywhere (no conversions path wired).
- *                        Pre-public gate (P3 N9): move to a secret manager /
- *                        encrypted option before any real key is configured.
- *                        When one is set, the admin UI shows a warning.
+ *                        Move to a secret manager / encrypted option before
+ *                        any real key is configured. When one is set, the
+ *                        admin UI shows a warning.
  *   crumbs_consent_policy  'required' (default) | 'off' — never 'off' in production
  */
 function crumbs_get_settings() {
 	return array(
 		'merchant_id'     => get_option( 'crumbs_merchant_id', '' ),
-		'api_url'         => get_option( 'crumbs_api_url', 'https://api.crumbs.dev' ),
+		'api_url'         => get_option( 'crumbs_api_url', '' ),
 		'api_key'         => get_option( 'crumbs_api_key', '' ),
 		'consent_policy'  => get_option( 'crumbs_consent_policy', 'required' ),
 	);
 }
 
 /**
- * Dev-only warning for the plaintext merchant key (P3 N9).
+ * Admin warning for a configured plaintext merchant key.
  *
  * Mirrors the server's webhook-secret guard pattern in spirit: the key is
  * optional, stored plaintext in wp_options (v0.1 dev scaffold), and not yet
  * sent anywhere. If an admin configures one, show a persistent warning that it
- * must move to a secret manager / encrypted option before public launch.
+ * must move to a secret manager / encrypted option before any real key is
+ * configured.
  */
 function crumbs_admin_api_key_warning() {
 	$api_key = get_option( 'crumbs_api_key', '' );
@@ -60,7 +62,7 @@ function crumbs_admin_api_key_warning() {
 		return;
 	}
 	echo '<div class="notice notice-warning"><p>';
-	echo esc_html__( 'Crumbs Attribution: the merchant API key is stored as a plaintext option — v0.1 dev scaffold only. Move it to a secret manager / encrypted option before public launch (pre-public gate).', 'crumbs-attribution' );
+	echo esc_html__( 'Crumbs Attribution: the merchant API key is stored as a plaintext option — v0.1 dev scaffold only. Move it to a secret manager / encrypted option before configuring a real key.', 'crumbs-attribution' );
 	echo '</p></div>';
 }
 add_action( 'admin_notices', 'crumbs_admin_api_key_warning' );
@@ -95,6 +97,12 @@ function crumbs_enqueue_sdk() {
 		return; // no consent -> no SDK instrumentation at all
 	}
 	$settings = crumbs_get_settings();
+	// The ledger URL and merchant id are REQUIRED — the plugin does not ship a
+	// default endpoint. Skip instrumentation until both are configured (the
+	// admin settings page explains what to fill in).
+	if ( empty( $settings['api_url'] ) || empty( $settings['merchant_id'] ) ) {
+		return;
+	}
 	wp_enqueue_script(
 		'crumbs-sdk',
 		plugins_url( 'vendor/crumbs-sdk/crumbs.iife.js', __FILE__ ),
@@ -143,8 +151,14 @@ function crumbs_ajax_issue_journey() {
 	}
 
 	$settings = crumbs_get_settings();
-	if ( empty( $settings['merchant_id'] ) ) {
-		wp_send_json_error( array( 'code' => 'MERCHANT_NOT_CONFIGURED' ), 500 );
+	if ( empty( $settings['merchant_id'] ) || empty( $settings['api_url'] ) ) {
+		wp_send_json_error(
+			array(
+				'code'    => 'LEDGER_NOT_CONFIGURED',
+				'message' => 'merchant id and ledger API URL must be set on the Settings page',
+			),
+			500
+		);
 	}
 
 	$response = wp_remote_post(
@@ -185,7 +199,7 @@ function crumbs_ajax_issue_journey() {
 	) );
 	// phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.cookies_setcookie
 	setcookie( 'crumbs_jr', $receipt, array(
-		'expires' => time() + 3600, // session-scope short TTL (anti-theft, spec A.6.6)
+		'expires' => time() + 3600, // short session-scope TTL — minimizes theft window
 		'path'    => '/',
 		'secure'  => true,
 		'samesite' => 'Lax',
@@ -202,7 +216,7 @@ add_action( 'wp_ajax_crumbs_issue_journey', 'crumbs_ajax_issue_journey' );
 
 /**
  * Declarative WebMCP checkout hook: annotate the WooCommerce checkout form so
- * agents can complete it with attribution (spec p5b-wedge-spec §C.2.2).
+ * agents can complete it with attribution (docs/ATTRIBUTION_PROTOCOL.md §4).
  * Zero-JS path — attributes only.
  */
 function crumbs_annotate_checkout_form( $form_html ) {
@@ -254,7 +268,7 @@ function crumbs_settings_page() {
 					<th scope="row"><label for="crumbs_api_key">API key (optional)</label></th>
 					<td><input type="password" id="crumbs_api_key" name="crumbs_api_key"
 						value="<?php echo esc_attr( $settings['api_key'] ); ?>" class="regular-text" />
-						<p class="description"><?php echo esc_html( 'v0.1 dev-only: stored plaintext in wp_options and not yet sent anywhere. Move to a secret manager / encrypted option before public launch (P3 N9).' ); ?></p>
+						<p class="description"><?php echo esc_html( 'v0.1 dev-only: stored plaintext in wp_options and not yet sent anywhere. Move to a secret manager / encrypted option before configuring a real key.' ); ?></p>
 					</td>
 				</tr>
 				<tr>
@@ -281,7 +295,7 @@ function crumbs_settings_page() {
 function crumbs_register_settings() {
 	register_setting( 'crumbs_attribution', 'crumbs_merchant_id', array( 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field' ) );
 	register_setting( 'crumbs_attribution', 'crumbs_api_url', array( 'type' => 'string', 'sanitize_callback' => 'esc_url_raw' ) );
-	register_setting( 'crumbs_attribution', 'crumbs_api_key', array( 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field' ) ); // STUB (P3 N9): plaintext option, dev-only — secret-manager/encrypted-option is the pre-public gate
+	register_setting( 'crumbs_attribution', 'crumbs_api_key', array( 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field' ) ); // STUB: plaintext option, dev-only — secret-manager/encrypted-option storage comes before real keys are supported
 	register_setting( 'crumbs_attribution', 'crumbs_consent_policy', array( 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field' ) );
 }
 add_action( 'admin_init', 'crumbs_register_settings' );

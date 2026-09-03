@@ -1,0 +1,40 @@
+name: Security vulnerability
+description: Privately report a security vulnerability (do NOT use for general bugs)
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **This template is for security vulnerabilities only.**
+
+        Please **do not include exploit details in a public issue**. For the
+        fastest, most confidential handling, report privately instead:
+
+        - Email **security@exo-trust.com**, or
+        - Use GitHub's private vulnerability reporting (Security tab → Report a
+          vulnerability), once enabled.
+
+        Public issues opened for security problems will be closed and pointed
+        here. See [SECURITY.md](../../../SECURITY.md) for our disclosure process
+        and response commitments.
+  - type: input
+    id: component
+    attributes:
+      label: Affected component
+      description: server / sdk / mcp / ext / wp / shopify + file or endpoint if known
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Affected version / commit
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description (non-sensitive summary)
+      description: |
+        A high-level summary is fine here. Keep exploit details out of the
+        public issue and send them via the private channels above.
+    validations:
+      required: true

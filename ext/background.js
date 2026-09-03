@@ -1,7 +1,7 @@
 /**
  * Crumbs Journey Viewer — background service worker.
  *
- * MV3 minimal-permission posture (spec p5b-distribution §A.2.1):
+ * MV3 minimal-permission posture (see ext/README.md):
  *   - only "storage" is required at install
  *   - host access + content script injection are OPTIONAL and granted per-site
  *     by an explicit user action in the popup ("Enable on this site")

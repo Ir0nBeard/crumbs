@@ -11,7 +11,7 @@ subset where a faithful JCS implementation is small:
     this natively
 
 Full RFC 8785 (nested structures, number handling per IEEE 754) is out of scope
-for v0.1 — the receipt is flat by design (see spec A.2).
+for v0.1 — the receipt is flat by design (see docs/ATTRIBUTION_PROTOCOL.md).
 """
 from __future__ import annotations
 

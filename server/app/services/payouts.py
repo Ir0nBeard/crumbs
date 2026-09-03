@@ -1,4 +1,4 @@
-"""Payout scheduling — records ONLY, no float (spec E.1/E.2 + D.1).
+"""Payout scheduling — records ONLY, no float.
 
 The commission split is computed and payout rows are SCHEDULED here; actual
 settlement (x402/USDC via a CDP facilitator, or Stripe Connect) is a STUB —
@@ -28,7 +28,7 @@ class PayoutError(Exception):
 def schedule_payouts(db: Session, *, limit: int = 500, settings=None) -> dict:
     """Batch-schedule payouts for finalized, non-mismatch, unscheduled conversions.
 
-    Split model (spec D.1 + synthesis §3):
+    Split model:
       commission     = cart_value_minor_units * crb / 10000
       network_take   = commission * ntb / 10000            (10-20%)
       net_commission = commission - network_take

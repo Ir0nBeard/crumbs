@@ -1,5 +1,5 @@
-"""Budget enforcement (spec A.6.2) + self-referral velocity (A.6.7) — service
-level, with explicit Settings so caps are deterministic."""
+"""Budget enforcement + self-referral velocity — service level, with
+explicit Settings so caps are deterministic."""
 from __future__ import annotations
 
 import pytest
@@ -72,7 +72,7 @@ def _journey(db, svc, stores, mid, surface="browser", agent_id=None, settings=TI
         mid=mid,
         surface=surface,
         consent={"basis": "explicit", "ref": "t1"},
-        client_ip="127.0.0.1",
+        client_ip="203.0.113.9",
         user_agent="test",
         agent_id=agent_id,
         signing=svc,
@@ -190,8 +190,8 @@ def test_self_referral_velocity(db, svc, stores):
 
 
 def test_failed_budget_attempt_does_not_burn_receipt(db, svc, stores):
-    """P3 C-M2: nonce is consumed only after every reject-check — a failed
-    budget attempt leaves the receipt reusable with corrected values."""
+    """nonce is consumed only after every reject-check — a failed budget
+    attempt leaves the receipt reusable with corrected values."""
     m1 = seed_merchant(db, commission_rate_bps=1200, network_take_bps=1500)
     j = _journey(db, svc, stores, m1.mid)
     receipt = j["receipt"]

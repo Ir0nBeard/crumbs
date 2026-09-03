@@ -1,10 +1,10 @@
-"""Merchant order webhook — conversion lock-in / voiding (spec A.6.8 + D.1).
+"""Merchant order webhook — conversion lock-in / voiding.
 
 The merchant re-confirms final order state with a signed webhook before payout
 scheduling; cart value is cross-checked against the confirmed order
-(conversion-padding control).
+(conversion-padding control). See docs/ATTRIBUTION_PROTOCOL.md §4.4.
 
-Hardening (P3 C-M5 / D-L3):
+Hardening invariants:
   * `conversion_id` is REQUIRED — no ambiguous oid-only resolution
   * `t` timestamp (unix seconds) in the body, tolerance window (300s) against
     replay of captured signed bodies
@@ -36,7 +36,7 @@ TRANSITIONS = {
     "refunded": set(),
 }
 
-# Reject this known dev constant outside local SQLite dev DBs (P3 C-M3)
+# Known dev constant — reject it outside local SQLite dev databases
 DEV_WEBHOOK_SECRET = "dev-webhook-secret-do-not-use-in-prod"
 
 
@@ -78,8 +78,8 @@ def process_order_webhook(
     if merchant is None:
         raise WebhookError("UNKNOWN_MERCHANT", "unknown merchant", 404)
 
-    # Dev-default guard: the known constant must never authenticate outside a
-    # local SQLite dev database (P3 C-M3).
+    # Dev-default guard: the known dev constant must never authenticate
+    # outside a local SQLite dev database.
     if merchant.webhook_secret == DEV_WEBHOOK_SECRET and not settings.database_url.startswith(
         "sqlite"
     ):
@@ -101,7 +101,8 @@ def process_order_webhook(
     if order_status not in ORDER_STATUSES:
         raise WebhookError("BAD_REQUEST", f"order_status must be one of {ORDER_STATUSES}")
 
-    # Replay window: `t` (unix seconds) must be within tolerance (P3 D-L3)
+    # Replay window: `t` (unix seconds) must be within tolerance so captured
+    # signed bodies cannot be replayed later.
     t = data.get("t")
     try:
         t_int = int(t) if t is not None else None
@@ -112,7 +113,8 @@ def process_order_webhook(
     if abs(int(time.time()) - t_int) > settings.webhook_tolerance_seconds:
         raise WebhookError("STALE_WEBHOOK", "webhook timestamp outside tolerance window")
 
-    # Unambiguous resolution: conversion_id is required (P3 C-M5 / D-L5)
+    # Unambiguous resolution: conversion_id is required (order_id-only lookup
+    # is ambiguous across merchants).
     if not cid:
         raise WebhookError("BAD_REQUEST",
                            "conversion_id is required (order_id-only resolution is ambiguous)")
@@ -125,7 +127,7 @@ def process_order_webhook(
         return {"conversion_id": conversion.cid, "order_status": conversion.order_status,
                 "idempotent": True}
 
-    # Monotonic state machine (P3 D-L3)
+    # Monotonic state machine: cancelled/refunded are terminal.
     if order_status not in TRANSITIONS.get(conversion.order_status, set()):
         raise WebhookError(
             "INVALID_TRANSITION",
@@ -136,7 +138,8 @@ def process_order_webhook(
     if order_status == "finalized":
         conversion.order_status = "finalized"
         conversion.verified_at = datetime.now(timezone.utc)
-        # Conversion-padding cross-check (spec A.6.8): |reported - confirmed| tolerance
+        # Conversion-padding cross-check (docs/ATTRIBUTION_PROTOCOL.md §4.4):
+        # |reported - confirmed| within tolerance
         if confirmed_value is not None:
             diff = abs(conversion.cart_value_minor_units - int(confirmed_value))
             tolerance = max(

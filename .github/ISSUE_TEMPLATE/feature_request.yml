@@ -1,0 +1,47 @@
+name: Feature request
+description: Propose a feature or improvement
+title: "[feature] "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before proposing: check [CHANGELOG.md](../../../CHANGELOG.md) — the honest
+        stub list may already cover your idea (with the reason it is not done yet).
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What real problem are you trying to solve? Who has it?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Sketch the behavior, API shape, or protocol change.
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - server
+        - sdk
+        - mcp
+        - ext
+        - wp
+        - shopify
+        - docs / protocol
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Design constraints to respect
+      description: |
+        Note anything relevant: consent-native by default (no receipt without a
+        recorded consent basis), neutral infrastructure, no stored value/float
+        in the ledger, zero-dependency SDK.

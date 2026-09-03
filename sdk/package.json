@@ -1,7 +1,7 @@
 {
   "name": "@crumbs/sdk",
   "version": "0.1.0",
-  "description": "Consent-native agent-journey attribution SDK (signed-attribution receipts). Local MVP — NOT published.",
+  "description": "Consent-native agent-journey attribution SDK (signed-attribution receipts). v0.1 — not yet published to npm.",
   "type": "module",
   "main": "crumbs.mjs",
   "exports": {
@@ -24,6 +24,11 @@
     "receipt",
     "webmcp"
   ],
-  "license": "UNLICENSED",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ir0nBeard/crumbs.git"
+  },
+  "homepage": "https://github.com/Ir0nBeard/crumbs",
   "private": true
 }

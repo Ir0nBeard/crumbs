@@ -93,7 +93,7 @@ def test_parse_receipt_rejects_non_canonical_wire_form():
 
 
 def test_parse_receipt_rejects_type_confusion():
-    """P3 C-M1: float/bool/string in int fields -> ValueError (never TypeError/500)."""
+    """float/bool/string in int fields -> ValueError (never TypeError/500)."""
     payload = make_payload()
     wire = json.loads(sign_receipt(payload, KEY1))
     for field, bad_value in (("exp", 123.0), ("kid", "abc"), ("crb", True), ("cv", "10")):

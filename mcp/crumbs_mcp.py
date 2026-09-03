@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
-"""Crumbs MCP server — minimal stdio implementation (spec p5b-distribution §A.5).
+"""Crumbs MCP server — minimal stdio implementation (MCP JSON-RPC 2.0).
 
-Tools (thin wrappers over the Crumbs ledger API, spec p5b-wedge-spec §C.2):
+Tools (thin wrappers over the Crumbs ledger API, docs/ATTRIBUTION_PROTOCOL.md):
   request_journey     consent-gated receipt issuance (POST /v1/journeys)
   verify_receipt      receipt status check (POST /v1/verify — bearer never in URL)
   declare_conversion  idempotent conversion stamping (POST /v1/conversions)
 
-Protocol: MCP JSON-RPC 2.0 over stdio (initialize / tools/list / tools/call).
-Pure stdlib (urllib) — no framework dependency, so it runs in the project venv
-or any Python 3.10+ interpreter. NOT published to any registry (v0.1 local).
+Pure stdlib (urllib) — no framework dependency, so it runs in any Python
+3.10+ interpreter. Not yet published to any registry (v0.1).
 
-Config (env):
-  CRUMBS_MCP_API_URL     default https://api.crumbs.dev
-  CRUMBS_MCP_MERCHANT_ID default m_ placeholder — required in practice
-  CRUMBS_MCP_API_KEY     optional X-Crumbs-Key for conversion posts
+Config (env) — required:
+  CRUMBS_MCP_API_URL      base URL of the Crumbs ledger instance you run
+                          (no default endpoint; tools error until set)
+  CRUMBS_MCP_MERCHANT_ID  merchant id (m_...) used when a tool call omits one
+                          (optional — pass merchant_id per call instead)
+Optional:
+  CRUMBS_MCP_API_KEY      X-Crumbs-Key for conversion posts
 """
 from __future__ import annotations
 
@@ -24,8 +26,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-API_URL = os.environ.get("CRUMBS_MCP_API_URL", "https://api.crumbs.dev").rstrip("/")
-MERCHANT_ID = os.environ.get("CRUMBS_MCP_MERCHANT_ID", "m_placeholder")
+API_URL = os.environ.get("CRUMBS_MCP_API_URL", "").rstrip("/")
+MERCHANT_ID = os.environ.get("CRUMBS_MCP_MERCHANT_ID", "")
 API_KEY = os.environ.get("CRUMBS_MCP_API_KEY", "")
 
 TOOLS = [
@@ -80,6 +82,11 @@ TOOLS = [
 
 
 def _http(method: str, path: str, payload: dict | None = None) -> dict:
+    if not API_URL:
+        raise MCPToolError(
+            "ledger not configured — set CRUMBS_MCP_API_URL to the ledger base "
+            "URL (there is no default endpoint)"
+        )
     url = API_URL + path
     data = json.dumps(payload).encode() if payload is not None else None
     req = urllib.request.Request(url, data=data, method=method)
@@ -108,6 +115,11 @@ def call_tool(name: str, args: dict) -> dict:
     try:
         if name == "request_journey":
             mid = args.get("merchant_id") or MERCHANT_ID
+            if not mid:
+                raise MCPToolError(
+                    "merchant not configured — pass merchant_id or set "
+                    "CRUMBS_MCP_MERCHANT_ID"
+                )
             result = _http("POST", "/v1/journeys", {
                 "merchant_id": mid,
                 "surface": args.get("surface", "api"),
@@ -131,13 +143,19 @@ def call_tool(name: str, args: dict) -> dict:
             }
         if name == "verify_receipt":
             # POST /v1/verify — the signed bearer receipt travels in the BODY,
-            # never in a query string (P3 D-M6 / N4).
+            # never in a query string (docs/ATTRIBUTION_PROTOCOL.md §5).
             result = _http("POST", "/v1/verify", {"receipt": args["receipt"]})
             return {"content": [{"type": "text", "text": json.dumps(result, sort_keys=True)}]}
         if name == "declare_conversion":
+            mid = args.get("merchant_id") or MERCHANT_ID
+            if not mid:
+                raise MCPToolError(
+                    "merchant not configured — pass merchant_id or set "
+                    "CRUMBS_MCP_MERCHANT_ID"
+                )
             result = _http("POST", "/v1/conversions", {
                 "receipt": args["receipt"],
-                "merchant_id": args.get("merchant_id") or MERCHANT_ID,
+                "merchant_id": mid,
                 "order_id": args["order_id"],
                 "cart_value_minor_units": args["cart_value_minor_units"],
                 "currency": args.get("currency", "USD"),

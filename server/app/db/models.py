@@ -1,4 +1,4 @@
-"""SQLAlchemy models — Crumbs attribution ledger (spec D.2).
+"""SQLAlchemy models — Crumbs attribution ledger.
 
 All tables exist in the Postgres migration (server/migrations/0001_init.sql).
 The models are dialect-neutral (String/Integer/etc.) so the test suite can run
@@ -69,7 +69,7 @@ class Journey(Base):
     ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     ua_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
-    # Budget counters (spec A.6.2)
+    # Budget counters (docs/ATTRIBUTION_PROTOCOL.md §5)
     conversions_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     merchants_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cart_value_used_usd: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -91,7 +91,7 @@ class Agent(Base):
         String(40), ForeignKey("agent_owners.owner_id"), nullable=True, index=True
     )
     registry_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    # IAB Agent Registry linkage (spec D.2) — stub field, not yet populated
+    # IAB Agent Registry linkage — stub field, not yet populated
     iab_registry_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
     revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -117,9 +117,9 @@ class Merchant(Base):
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     owner_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
-    # STUB (P3 C-M3): v0.1 keeps the webhook signing secret here for local dev;
-    # production MUST move it to a secret manager (KMS/encrypted vault) and
-    # store only a reference. The dev default is rejected outside SQLite.
+    # v0.1 keeps the webhook signing secret here for local dev; production
+    # MUST move it to a secret manager (KMS/encrypted vault) and store only a
+    # reference. The dev default is rejected outside SQLite.
     webhook_secret: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -144,7 +144,7 @@ class MerchantProgram(Base):
 
 
 class Conversion(Base):
-    """orders / conversions (spec D.2) — one row per stamped conversion."""
+    """one row per stamped conversion (order linkage)."""
 
     __tablename__ = "conversions"
     __table_args__ = (
@@ -196,7 +196,7 @@ class Payout(Base):
     settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     tx_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
     # STUB: settlement execution (x402/CDP facilitator, Stripe Connect) is NOT
-    # implemented in v0.1 — scheduling records only, NO float held (spec E.1).
+    # implemented in v0.1 — scheduling records only, NO float held.
 
 
 class Dispute(Base):
@@ -251,7 +251,7 @@ class UsedNonce(Base):
 
 
 class AuditEvent(Base):
-    """Append-only audit log — every state change (spec D.4)."""
+    """Append-only audit log — every state change."""
 
     __tablename__ = "audit_events"
 
