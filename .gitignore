@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# Local dev database / runtime
+*.db
+*.sqlite3
+*.log
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Secrets — never commit real keys; .env is local-only
+.env

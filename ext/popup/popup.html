@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Crumbs Journey</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <h1>Crumbs Journey Viewer</h1>
+    <p class="sub">Agent-journey attribution receipts — view only</p>
+  </header>
+
+  <section id="site">
+    <h2>This site</h2>
+    <div id="siteOrigin">—</div>
+    <button id="toggleSite" class="primary">Enable on this site</button>
+    <p class="hint" id="siteHint">Viewing is opt-in per site. Nothing is read before you enable it.</p>
+  </section>
+
+  <section id="state">
+    <h2>Current page state</h2>
+    <dl>
+      <dt>Mirror cookie (crumbs_jr)</dt><dd id="mirror">—</dd>
+      <dt>Receipt (from SDK storage)</dt><dd id="receipt">—</dd>
+      <dt>Agent signals</dt><dd id="agents">—</dd>
+      <dt>WebMCP tool present</dt><dd id="webmcp">—</dd>
+    </dl>
+    <button id="refresh">Refresh</button>
+    <button id="verify" class="secondary" disabled>Verify receipt with ledger</button>
+    <p id="verifyResult" class="hint"></p>
+  </section>
+
+  <section id="privacy">
+    <h2>Privacy</h2>
+    <p class="hint">
+      This extension only reads journey/receipt state on sites you explicitly
+      enable. It makes no network requests of its own. The optional "Verify"
+      button calls the Crumbs ledger API with the receipt you hold — nothing else.
+      Full disclosure: <a href="../PRIVACY.md" target="_blank">PRIVACY.md</a>
+    </p>
+  </section>
+
+  <script src="popup.js"></script>
+</body>
+</html>

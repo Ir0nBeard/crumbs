@@ -1,0 +1,11 @@
+# Crumbs attribution ledger — server dependencies (local MVP v0.1)
+# NOTE: pinning is loose for the MVP; freeze before any deployment.
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+pydantic>=2.7,<3
+pydantic-settings>=2.3,<3
+sqlalchemy>=2.0,<3
+redis>=5.0,<6
+httpx>=0.27,<1
+pytest>=8.2,<9
+alembic>=1.13,<2

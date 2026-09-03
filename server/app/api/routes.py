@@ -1,0 +1,337 @@
+"""FastAPI routes — v1 API (spec C.2 + D.1).
+
+Endpoints:
+  POST   /v1/journeys         consent-gated receipt issuance
+  POST   /v1/conversions      idempotent conversion stamping
+  GET    /v1/verify           receipt status check
+  POST   /v1/webhooks/orders  merchant signed order confirmation
+  POST   /v1/payouts/batch    payout scheduling (records only — no float)
+  POST   /v1/admin/revoke     revocation (env-gated admin token)
+  GET    /v1/health           liveness
+"""
+from __future__ import annotations
+
+import json
+import logging
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+from ..config import get_settings
+from ..db.session import get_db
+from ..services import ledger, payouts, webhooks
+
+log = logging.getLogger("crumbs.api")
+
+router = APIRouter(prefix="/v1")
+
+
+def _settings():
+    return get_settings()
+
+
+# --- request models ---------------------------------------------------------
+
+
+class ConsentModel(BaseModel):
+    basis: str = Field(..., pattern="^(gpp|tcf|explicit|88b)$")
+    ref: str | None = None
+
+
+class JourneyRequest(BaseModel):
+    merchant_id: str
+    surface: str = Field(..., pattern="^(browser|api|chat)$")
+    consent: ConsentModel | None = None
+    agent_id: str | None = None
+
+
+class ConversionRequest(BaseModel):
+    receipt: str
+    merchant_id: str
+    order_id: str = Field(..., min_length=1, max_length=128)
+    cart_value_minor_units: int = Field(..., ge=0)
+    currency: str = Field(..., pattern="^[A-Za-z]{3}$")
+    surface: str | None = Field(None, pattern="^(browser|api|chat)$")
+
+
+class WebhookRequest(BaseModel):
+    conversion_id: str | None = None
+    order_id: str | None = None
+    order_status: str = Field(..., pattern="^(finalized|cancelled|refunded)$")
+    final_cart_value_minor_units: int | None = None
+    t: int | None = Field(None, description="unix seconds — replay window (required by service)")
+
+
+class RevokeRequest(BaseModel):
+    kind: str = Field(..., pattern="^(receipt|journey|agent)$")
+    id: str
+    reason: str = Field(..., min_length=1, max_length=1000)
+
+
+class PayoutBatchRequest(BaseModel):
+    limit: int = Field(500, ge=1, le=5000)
+
+
+# --- error mapping -----------------------------------------------------------
+
+
+def _ledger_error_to_http(exc: ledger.LedgerError) -> HTTPException:
+    return HTTPException(
+        status_code=exc.status_code,
+        detail={"code": exc.code, "message": str(exc), **(exc.extra or {})},
+    )
+
+
+# --- journeys ----------------------------------------------------------------
+
+
+@router.post("/journeys", status_code=201)
+def create_journey(
+    body: JourneyRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    settings=Depends(_settings),
+):
+    try:
+        result = ledger.issue_journey(
+            db,
+            mid=body.merchant_id,
+            surface=body.surface,
+            consent={"basis": body.consent.basis, "ref": body.consent.ref}
+            if body.consent
+            else {},
+            client_ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            agent_id=body.agent_id,
+            signing=request.app.state.signing,
+            nonce_store=request.app.state.nonce_store,
+            rate_limiter=request.app.state.rate_limiter,
+            settings=settings,
+        )
+        return result
+    except ledger.LedgerError as exc:
+        raise _ledger_error_to_http(exc) from exc
+
+
+# --- conversions -------------------------------------------------------------
+
+
+@router.post("/conversions", status_code=201)
+def create_conversion(
+    body: ConversionRequest,
+    request: Request,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    merchant_key: str | None = Header(default=None, alias="X-Crumbs-Key"),
+    db: Session = Depends(get_db),
+    settings=Depends(_settings),
+):
+    # Merchant API key gate (optional in v0.1; empty CRUMBS_MERCHANT_API_KEY = open).
+    # Constant-time compare (P3 C-M11).
+    import secrets
+
+    if settings.merchant_api_key and not secrets.compare_digest(
+        merchant_key or "", settings.merchant_api_key
+    ):
+        raise HTTPException(401, detail={"code": "UNAUTHORIZED", "message": "bad merchant key"})
+    expected_key = f"{body.receipt and _rid_from(body.receipt)}:{body.order_id}"
+    # Idempotency-Key must be "<rid>:<oid>" (spec C.2.5) — validate when supplied
+    if idempotency_key and idempotency_key != expected_key:
+        raise HTTPException(
+            422,
+            detail={"code": "BAD_IDEMPOTENCY_KEY",
+                    "message": "Idempotency-Key must be <receipt rid>:<order_id>"},
+        )
+    client_ip = request.client.host if request.client else None
+    if client_ip:
+        allowed, _ = request.app.state.rate_limiter.hit(
+            "conversions", client_ip, settings.conversion_rate_limit, 3600
+        )
+        if not allowed:
+            raise HTTPException(429, detail={"code": "RATE_LIMITED", "message": "too many requests"})
+    try:
+        result = ledger.record_conversion(
+            db,
+            receipt_str=body.receipt,
+            oid=body.order_id,
+            cart_value_minor_units=body.cart_value_minor_units,
+            currency=body.currency,
+            surface=body.surface,
+            signing=request.app.state.signing,
+            nonce_store=request.app.state.nonce_store,
+            rate_limiter=request.app.state.rate_limiter,
+            settings=settings,
+        )
+        return result
+    except ledger.LedgerError as exc:
+        if exc.code == ledger.E_IDEMPOTENT:
+            # Safe retry: return the existing conversion with HTTP 200 (spec A.6.4)
+            from fastapi.responses import JSONResponse
+
+            return JSONResponse(status_code=200, content={**exc.extra, "idempotent": True})
+        raise _ledger_error_to_http(exc) from exc
+
+
+def _rid_from(receipt_str: str) -> str:
+    try:
+        return json.loads(receipt_str).get("rid", "")
+    except (json.JSONDecodeError, TypeError):
+        return ""
+
+
+# --- verify ------------------------------------------------------------------
+
+
+@router.get("/verify")
+def verify(receipt: str, request: Request, db: Session = Depends(get_db)):
+    """GET variant (query string) — kept for diagnostics/back-compat; prefer
+    POST /v1/verify so bearer receipts never ride URLs (P3 D-M6)."""
+    return ledger.verify_receipt(
+        db,
+        receipt,
+        signing=request.app.state.signing,
+        nonce_store=request.app.state.nonce_store,
+    )
+
+
+class VerifyRequest(BaseModel):
+    receipt: str
+
+
+@router.post("/verify")
+def verify_post(body: VerifyRequest, request: Request, db: Session = Depends(get_db)):
+    """POST variant — the canonical verify call; receipt travels in the body,
+    never in a query string (P3 D-M6)."""
+    return ledger.verify_receipt(
+        db,
+        body.receipt,
+        signing=request.app.state.signing,
+        nonce_store=request.app.state.nonce_store,
+    )
+
+
+# --- webhooks ----------------------------------------------------------------
+
+
+@router.post("/webhooks/orders")
+async def order_webhook(
+    request: Request,
+    db: Session = Depends(get_db),
+    settings=Depends(_settings),
+):
+    """Merchant signed order confirmation (spec A.6.8).
+
+    Auth: X-Crumbs-Signature = HMAC-SHA256(merchant webhook secret, raw body),
+    hex-encoded. The merchant is resolved from the conversion reference so the
+    signature is checked against the right merchant's secret.
+    """
+    raw = await request.body()
+    try:
+        body = WebhookRequest.model_validate_json(raw)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(400, detail={"code": "MALFORMED", "message": "invalid JSON body"}) from exc
+
+    mid = _resolve_mid(db, body)
+    try:
+        result = webhooks.process_order_webhook(
+            db,
+            mid=mid,
+            body=raw,
+            signature=request.headers.get("X-Crumbs-Signature", ""),
+            settings=settings,
+        )
+        return result
+    except webhooks.WebhookError as exc:
+        raise HTTPException(exc.status_code,
+                            detail={"code": exc.code, "message": str(exc)}) from exc
+
+
+def _resolve_mid(db, body: WebhookRequest) -> str:
+    """Resolve the merchant id from the conversion/order reference (webhook auth)."""
+    from sqlalchemy import select
+
+    from ..db.models import Conversion
+
+    conv = None
+    if body.conversion_id:
+        conv = db.get(Conversion, body.conversion_id)
+    elif body.order_id:
+        conv = db.execute(
+            select(Conversion).where(Conversion.oid == body.order_id)
+        ).scalars().first()
+    if conv is None:
+        raise webhooks.WebhookError("NOT_FOUND", "conversion not found", 404)
+    return conv.mid
+
+
+# --- payouts -----------------------------------------------------------------
+
+
+@router.post("/payouts/batch")
+def payout_batch(
+    body: PayoutBatchRequest,
+    request: Request,
+    admin_token: str | None = Header(default=None, alias="X-Crumbs-Admin-Token"),
+    db: Session = Depends(get_db),
+    settings=Depends(_settings),
+):
+    """Schedule payout records for finalized conversions. Money-adjacent — the
+    admin token is required (P3 C-M6); scheduling is still records-only."""
+    import secrets
+
+    if not settings.admin_token or not secrets.compare_digest(
+        admin_token or "", settings.admin_token
+    ):
+        raise HTTPException(401, detail={"code": "UNAUTHORIZED", "message": "admin token required"})
+    try:
+        return payouts.schedule_payouts(db, limit=body.limit, settings=settings)
+    except payouts.PayoutError as exc:
+        raise HTTPException(exc.status_code, detail={"code": exc.code, "message": str(exc)}) from exc
+
+
+# --- admin (revocation) ------------------------------------------------------
+
+
+@router.post("/admin/revoke", status_code=200)
+def admin_revoke(
+    body: RevokeRequest,
+    request: Request,
+    admin_token: str | None = Header(default=None, alias="X-Crumbs-Admin-Token"),
+    db: Session = Depends(get_db),
+    settings=Depends(_settings),
+):
+    if not settings.admin_token:
+        raise HTTPException(501, detail={"code": "ADMIN_DISABLED",
+                                         "message": "admin endpoints disabled (CRUMBS_ADMIN_TOKEN unset)"})
+    import secrets
+
+    if not secrets.compare_digest(admin_token or "", settings.admin_token):
+        raise HTTPException(401, detail={"code": "UNAUTHORIZED", "message": "bad admin token"})
+    try:
+        ledger.revoke(db, body.kind, body.id, body.reason, actor="admin")
+    except ledger.LedgerError as exc:
+        raise _ledger_error_to_http(exc) from exc
+    return {"revoked": {"kind": body.kind, "id": body.id}}
+
+
+# --- health ------------------------------------------------------------------
+
+
+@router.get("/health")
+def health(request: Request):
+    from sqlalchemy import text
+
+    db_ok = True
+    try:
+        session = next(get_db())
+        session.execute(text("SELECT 1"))
+        session.close()
+    except Exception:  # noqa: BLE001
+        db_ok = False
+    return {
+        "status": "ok" if db_ok else "degraded",
+        "app": request.app.state.settings.app_name,
+        "db": "ok" if db_ok else "error",
+        "stores": "redis" if getattr(request.app.state, "redis_connected", False) else "memory",
+        "version": 1,
+    }

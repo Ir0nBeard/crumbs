@@ -1,0 +1,29 @@
+{
+  "name": "@crumbs/sdk",
+  "version": "0.1.0",
+  "description": "Consent-native agent-journey attribution SDK (signed-attribution receipts). Local MVP — NOT published.",
+  "type": "module",
+  "main": "crumbs.mjs",
+  "exports": {
+    ".": "./crumbs.mjs",
+    "./iife": "./dist/crumbs.iife.js"
+  },
+  "files": [
+    "crumbs.mjs",
+    "src/",
+    "dist/"
+  ],
+  "scripts": {
+    "build": "node scripts/build-iife.mjs",
+    "test": "node --test test/"
+  },
+  "keywords": [
+    "attribution",
+    "agent",
+    "x402",
+    "receipt",
+    "webmcp"
+  ],
+  "license": "UNLICENSED",
+  "private": true
+}
