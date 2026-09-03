@@ -9,8 +9,8 @@ payout rails.
 **License: GPL-2.0-or-later** — the WordPress.org plugin directory requires
 all hosted plugin code to be GPL-compatible, so this plugin directory is
 distributed under GPL-2.0-or-later (see the plugin header, `readme.txt`, and
-the repo's [LICENSE-GPL-2.0-or-later](../../LICENSE-GPL-2.0-or-later)). The
-rest of the Crumbs repo is MIT (see [LICENSE-MIT](../../LICENSE-MIT)); the
+the repo's [LICENSE-GPL-2.0-or-later](../LICENSE-GPL-2.0-or-later)). The
+rest of the Crumbs repo is MIT (see [LICENSE-MIT](../LICENSE-MIT)); the
 MIT-licensed SDK ships *vendored* inside this plugin with its license notice
 intact — MIT is GPL-compatible, and no code is loaded from third-party
 servers.

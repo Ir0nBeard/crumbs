@@ -51,8 +51,8 @@ and Node >= 18 is all you need. The full test suite must pass before a PR:
 
 By contributing you agree that your changes are licensed under the same terms
 as the component you touch: MIT for core code, GPL-2.0-or-later for
-`wp/crumbs-attribution/` (see the [LICENSE-MIT](../LICENSE-MIT) and
-[LICENSE-GPL-2.0-or-later](../LICENSE-GPL-2.0-or-later) files). Keep license
+`wp/crumbs-attribution/` (see the [LICENSE-MIT](LICENSE-MIT) and
+[LICENSE-GPL-2.0-or-later](LICENSE-GPL-2.0-or-later) files). Keep license
 notices intact when vendoring or copying files.
 
 ## AI contributions
