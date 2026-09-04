@@ -101,16 +101,29 @@ class RedisNonceStore(UsedNonceStore):
 
 
 class RedisRateLimiter(RateLimiter):
+    """Fixed-window INCR limiter on Redis (>= 6).
+
+    INCR and the first-write EXPIRE must be atomic so the window starts
+    exactly once. ``EXPIRE NX`` needs Redis 7, so a tiny Lua script keeps
+    the pair atomic on Redis 6 and 7 alike (scripts are cached server-side
+    after the first call).
+    """
+
+    _INCR_EXPIRE = """
+local c = redis.call('INCR', KEYS[1])
+if c == 1 then
+  redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+return c
+"""
+
     def __init__(self, redis_client) -> None:
         self._r = redis_client
 
     def hit(self, scope: str, key: str, limit: int, window_seconds: int) -> tuple[bool, int]:
         k = f"cr:rl:{scope}:{key}"
-        pipe = self._r.pipeline()
-        pipe.incr(k)
-        pipe.expire(k, window_seconds, nx=True)
-        count, _ = pipe.execute()
-        return (int(count) <= limit), int(count)
+        count = int(self._r.eval(self._INCR_EXPIRE, 1, k, window_seconds))
+        return (count <= limit), count
 
 
 # ---------------------------------------------------------------------------

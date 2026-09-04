@@ -9,6 +9,35 @@ stable).
 
 ### Added
 
+- **Live Postgres/Redis test coverage + conversion concurrency hardening**:
+  - New `tests/server/test_live_infra.py` runs the canonical migration SQL
+    (`server/migrations/0001_init.sql`, `0002_merchant_tokens.sql`) against a
+    real Postgres server — clean apply, idempotent re-run, and table/column
+    parity with the ORM models — then exercises the service layer
+    (journey -> receipt -> conversion -> verify) on Postgres and verifies the
+    Redis nonce/rate-limit stores (replay rejection, fixed windows, TTL).
+    Concurrent-conversion tests prove budget caps never overshoot, the
+    distinct-merchant counter never drifts, and the self-referral velocity
+    window holds under multi-connection races. Gated by
+    `CRUMBS_LIVE_TEST_DB_URL` / `CRUMBS_LIVE_TEST_REDIS_URL` and skipped in
+    the default SQLite CI run; the Redis fail-closed startup test runs
+    everywhere.
+  - Conversion recording is serialized per journey (`SELECT ... FOR UPDATE`
+    on Postgres; compiled away on SQLite) so two concurrent conversions of a
+    first-time merchant cannot both compute `merchant_delta=1` and drift
+    `journeys.merchants_used` above the true distinct count. Postgres
+    advisory transaction locks keyed on (agent, merchant) additionally close
+    the velocity window across different journeys of the same agent.
+  - A failed conversion attempt now rolls its transaction back before
+    re-raising: the journey row lock and (agent, merchant) advisory lock no
+    longer outlive the error inside a still-open transaction, which could
+    deadlock concurrent conversions on Postgres.
+  - `RedisRateLimiter` uses an atomic Lua INCR+EXPIRE script instead of
+    `EXPIRE ... NX` (Redis >= 7 only), so fixed-window rate limiting works on
+    Redis >= 6.
+  - `server/requirements.txt` (and the hash-pinned lock) gained
+    `psycopg2-binary` — the Postgres driver for `postgresql://` database
+    URLs, matching the production target declared by `server/migrations/`.
 - **Secret-manager indirection for merchant webhook secrets** (credential
   material out of the ledger database):
   - New `server/app/core/secrets.py`: a merchant's `webhook_secret` column

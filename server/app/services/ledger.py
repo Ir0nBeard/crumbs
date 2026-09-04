@@ -9,7 +9,7 @@ import json
 import logging
 import time
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
@@ -316,8 +316,47 @@ def record_conversion(
     -> journey/agent checks -> budget -> self-referral/velocity -> idempotency
     -> record. Idempotent on (rid, oid): a repeat call returns the existing
     conversion with E_IDEMPOTENT marker (API maps to 200).
+
+    A failed attempt rolls the transaction back before re-raising: the
+    journey row lock and (agent, merchant) advisory lock taken along the way
+    must not outlive the error, or a later statement on the same session
+    would run inside the still-open, still-locked transaction and can
+    deadlock concurrent conversions.
     """
     settings = settings or get_settings()
+    try:
+        return _record_conversion_impl(
+            db,
+            receipt_str=receipt_str,
+            oid=oid,
+            cart_value_minor_units=cart_value_minor_units,
+            currency=currency,
+            surface=surface,
+            merchant_key=merchant_key,
+            signing=signing,
+            nonce_store=nonce_store,
+            rate_limiter=rate_limiter,
+            settings=settings,
+        )
+    except LedgerError:
+        db.rollback()
+        raise
+
+
+def _record_conversion_impl(
+    db: Session,
+    *,
+    receipt_str: str,
+    oid: str,
+    cart_value_minor_units: int,
+    currency: str,
+    surface: str | None = None,
+    merchant_key: str | None = None,
+    signing: SigningService,
+    nonce_store,
+    rate_limiter,
+    settings,
+) -> dict:
     try:
         payload = parse_receipt(receipt_str)
     except ValueError as exc:
@@ -367,6 +406,16 @@ def record_conversion(
     agent = db.get(Agent, aid)
     if agent is None or agent.revoked:
         raise LedgerError(E_REVOKED_AGENT, "agent not active")
+
+    # 6. serialize this journey's recording. Conversion recording reads
+    #    journey-scoped state — the distinct-merchant set, the budget
+    #    counters, the velocity window — and then mutates the journey row.
+    #    Without a lock, two concurrent conversions of a first-time merchant
+    #    could both compute merchant_delta=1 and drift `merchants_used` above
+    #    the true distinct count. SELECT ... FOR UPDATE (compiled away on
+    #    SQLite, which is single-writer) makes the reads observe the latest
+    #    committed state.
+    journey = _lock_journey_for_update(db, jid)
 
     # 7. merchant program + surface + self-referral
     program = _lookup_program(db, mid)
@@ -455,6 +504,38 @@ def record_conversion(
     }
 
 
+def _lock_journey_for_update(db: Session, jid: str) -> Journey:
+    """Serialize conversion recording on one journey (Postgres row lock)."""
+    journey = db.execute(
+        select(Journey)
+        .where(Journey.jid == jid, Journey.status == "active")
+        .with_for_update()
+    ).scalar_one_or_none()
+    if journey is None:
+        raise LedgerError(E_REVOKED_JOURNEY, "journey not active")
+    return journey
+
+
+def _lock_agent_merchant_window(db: Session, aid: str, mid: str) -> None:
+    """Serialize the (agent, merchant) velocity window across journeys.
+
+    The self-referral velocity count spans every journey of an agent, so a
+    per-journey row lock does not cover two concurrent conversions of the
+    same agent at the same merchant on DIFFERENT journeys. Postgres advisory
+    transaction locks keyed on (aid, mid) close that window and release at
+    commit. SQLite is single-writer — nothing to do.
+    """
+    if db.bind is None or db.bind.dialect.name != "postgresql":
+        return
+    import zlib
+
+    k1 = zlib.crc32(aid.encode("utf-8")) & 0x7FFFFFFF
+    k2 = zlib.crc32(mid.encode("utf-8")) & 0x7FFFFFFF
+    db.execute(
+        text("SELECT pg_advisory_xact_lock(:k1, :k2)"), {"k1": k1, "k2": k2}
+    )
+
+
 def _check_self_referral(db: Session, aid: str, mid: str, program: MerchantProgram,
                          settings) -> None:
     """Spec A.6.7: merchant's own agents excluded; velocity against self-referral."""
@@ -467,7 +548,10 @@ def _check_self_referral(db: Session, aid: str, mid: str, program: MerchantProgr
     # Relationship check: same owner id, or the agent is registered to the merchant
     if merchant.owner_id and agent.owner_id and merchant.owner_id == agent.owner_id:
         raise LedgerError(E_SELF_REFERRAL, "merchant-owned agent cannot self-refer")
-    # Velocity: conversions for (agent, merchant) in the window
+    # Velocity: conversions for (agent, merchant) in the window. Serialize the
+    # window across the agent's journeys so concurrent conversions cannot both
+    # observe a count below the cap and overshoot it.
+    _lock_agent_merchant_window(db, aid, mid)
     from datetime import datetime, timezone
 
     window_start_dt = datetime.fromtimestamp(

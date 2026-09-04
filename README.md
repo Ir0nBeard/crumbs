@@ -65,6 +65,20 @@ Full fresh-clone walkthrough (dev server + SQLite + SDK snippet): **[QUICKSTART.
 (cd sdk && node --test test/sdk.test.mjs)
 ```
 
+The SQLite suite is the CI default. Live Postgres/Redis tests
+(`tests/server/test_live_infra.py`) additionally verify the migration DDL,
+the service layer, the Redis stores, and concurrent budget/velocity
+enforcement against real infrastructure. Enable them by pointing the two
+variables at a dedicated test database / Redis instance (the tests drop and
+recreate the target database's `public` schema, so never point them at data
+you need):
+
+```sh
+CRUMBS_LIVE_TEST_DB_URL=postgresql://user:pass@127.0.0.1:5432/crumbs_test \
+CRUMBS_LIVE_TEST_REDIS_URL=redis://127.0.0.1:6379/15 \
+.venv/bin/python -m pytest tests/server/test_live_infra.py -q
+```
+
 ## License
 
 **Dual-licensed by component**, see [LICENSE-MIT](LICENSE-MIT) and
