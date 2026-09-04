@@ -47,6 +47,26 @@ def create_app() -> FastAPI:
         ),
         lifespan=lifespan,
     )
+    # Scoped CORS: only origins listed in CRUMBS_CORS_ORIGINS may call the
+    # API from a browser. EMPTY list = no cross-origin browser access
+    # (fail closed). Per-merchant token origin allowlists add
+    # authorization-level scoping on /v1/conversions (merchant_auth).
+    from fastapi.middleware.cors import CORSMiddleware
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.parsed_cors_origins,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=[
+            "Content-Type",
+            "X-Crumbs-Key",
+            "X-Crumbs-Signature",
+            "X-Crumbs-Admin-Token",
+            "Idempotency-Key",
+        ],
+        allow_credentials=False,
+        max_age=600,
+    )
     app.include_router(router)
     return app
 

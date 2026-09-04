@@ -92,9 +92,26 @@ class Settings(BaseSettings):
     receipt_ttl_seconds: int = 30 * 24 * 3600  # 30 days (docs/ATTRIBUTION_PROTOCOL.md §2)
 
     # --- Merchant auth ---------------------------------------------------------
-    # Optional gate on /v1/conversions: if set, require X-Crumbs-Key header.
-    # Real per-merchant keyed tokens are a post-v0.1 item (see CHANGELOG.md).
+    # v0.1 shared key gate on /v1/conversions (X-Crumbs-Key header). DEPRECATED:
+    # per-merchant keyed tokens (services/merchant_auth.py) are the recommended
+    # credential — scoped, revocable, hash-at-rest. The shared key stays
+    # accepted for back-compatibility while merchants migrate; empty = open.
     merchant_api_key: str = ""
+    # When true, /v1/conversions REQUIRES a valid per-merchant token; the
+    # legacy shared key is rejected and a missing key is a 401 (fail closed).
+    require_merchant_tokens: bool = False
+
+    # --- CORS (browser transport gate) ------------------------------------------
+    # Comma-separated allow list of origins (https://shop.example.com) that
+    # may call the API from a browser. EMPTY = no cross-origin browser access
+    # (fail closed; server-to-server calls and extension service workers with
+    # host permissions are unaffected). Per-token origin allowlists on
+    # merchant tokens add authorization-level scoping on /v1/conversions.
+    cors_origins: str = ""
+
+    @property
+    def parsed_cors_origins(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
     @property
     def parsed_signing_keys(self) -> dict[int, bytes]:

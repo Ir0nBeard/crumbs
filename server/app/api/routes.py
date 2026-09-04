@@ -8,6 +8,9 @@ Endpoints:
   POST   /v1/payouts/batch    payout scheduling (records only — no float)
   POST   /v1/payouts/{pid}/settlement   record a rail settlement proof (admin)
   GET    /v1/payouts/{pid}    payout record + splits (proof envelope; admin)
+  POST   /v1/admin/merchants/{mid}/tokens       issue a per-merchant token (admin)
+  GET    /v1/admin/merchants/{mid}/tokens       list per-merchant tokens (admin)
+  POST   /v1/admin/tokens/{token_id}/revoke     revoke a per-merchant token (admin)
   POST   /v1/admin/revoke     revocation (env-gated admin token)
   GET    /v1/health           liveness
 """
@@ -21,8 +24,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
+from ..db.models import Merchant, Receipt
 from ..db.session import get_db
-from ..services import ledger, payouts, webhooks
+from ..services import ledger, merchant_auth, payouts, webhooks
 
 log = logging.getLogger("crumbs.api")
 
@@ -73,6 +77,17 @@ class RevokeRequest(BaseModel):
     kind: str = Field(..., pattern="^(receipt|journey|agent)$")
     id: str
     reason: str = Field(..., min_length=1, max_length=1000)
+
+
+class TokenCreateRequest(BaseModel):
+    label: str | None = Field(None, max_length=64)
+    # https origins this token may be presented from in a browser (Origin
+    # header). Empty = no origin restriction (server-to-server use).
+    origins: list[str] | None = None
+
+
+class TokenRevokeRequest(BaseModel):
+    reason: str | None = Field(None, max_length=500)
 
 
 class PayoutBatchRequest(BaseModel):
@@ -176,15 +191,41 @@ def create_conversion(
     db: Session = Depends(get_db),
     settings=Depends(_settings),
 ):
-    # Merchant API key gate (optional in v0.1; empty CRUMBS_MERCHANT_API_KEY = open).
-    # Constant-time compare so timing does not leak key validity.
-    import secrets
-
-    if settings.merchant_api_key and not secrets.compare_digest(
-        merchant_key or "", settings.merchant_api_key
-    ):
-        raise HTTPException(401, detail={"code": "UNAUTHORIZED", "message": "bad merchant key"})
-    expected_key = f"{body.receipt and _rid_from(body.receipt)}:{body.order_id}"
+    # --- Merchant auth ---------------------------------------------------
+    # Per-merchant keyed tokens (recommended): X-Crumbs-Key must match an
+    # active token whose merchant owns the receipt; the token's origin
+    # allowlist (scoped CORS) is enforced when one is set. The legacy
+    # shared CRUMBS_MERCHANT_API_KEY is still accepted for back-compat
+    # unless CRUMBS_REQUIRE_MERCHANT_TOKENS is set.
+    rid = _rid_from(body.receipt)
+    receipt_row = db.get(Receipt, rid) if rid else None
+    # API contract: the body merchant_id must be the receipt's merchant
+    # (the receipt's mid is authoritative in the ledger — reject a
+    # mismatch up front instead of silently ignoring the field).
+    if receipt_row is not None and body.merchant_id != receipt_row.mid:
+        raise HTTPException(
+            422,
+            detail={"code": "MERCHANT_MISMATCH",
+                    "message": "merchant_id does not match the receipt's merchant"},
+        )
+    origin = request.headers.get("origin")
+    if origin:
+        try:
+            origin = merchant_auth.validate_origin(origin)
+        except ValueError:
+            origin = None  # not a browser Origin shape — scope checks treat as absent
+    try:
+        merchant_auth.authenticate_conversion(
+            db,
+            key=merchant_key,
+            settings=settings,
+            receipt_mid=receipt_row.mid if receipt_row is not None else None,
+            origin=origin,
+        )
+    except merchant_auth.MerchantAuthError as exc:
+        raise HTTPException(exc.status_code,
+                            detail={"code": exc.code, "message": exc.message}) from exc
+    expected_key = f"{rid}:{body.order_id}"
     # Idempotency-Key must be "<rid>:<oid>" (docs/ATTRIBUTION_PROTOCOL.md §4.3) — validate when supplied
     if idempotency_key and idempotency_key != expected_key:
         raise HTTPException(
@@ -394,7 +435,74 @@ def payout_detail(
     return record
 
 
-# --- admin (revocation) ------------------------------------------------------
+# --- admin (merchant tokens) -----------------------------------------------
+
+
+@router.post("/admin/merchants/{mid}/tokens", status_code=201)
+def admin_issue_token(
+    mid: str,
+    body: TokenCreateRequest,
+    request: Request,
+    admin_token: str | None = Header(default=None, alias="X-Crumbs-Admin-Token"),
+    db: Session = Depends(get_db),
+    settings=Depends(_settings),
+):
+    """Issue a per-merchant keyed token (scoped credential for
+    /v1/conversions). The plaintext ``cmk_`` value is returned ONCE; only
+    its SHA-256 hash is stored. Optional ``origins`` restrict browser-origin
+    use of the token (scoped CORS). Admin-gated (fail closed unset)."""
+    _require_admin(settings, admin_token)
+    merchant = db.get(Merchant, mid)
+    if merchant is None:
+        raise HTTPException(404, detail={"code": "MERCHANT_NOT_FOUND",
+                                         "message": f"no merchant {mid}"})
+    try:
+        row, plaintext = merchant_auth.issue_token(
+            db, mid=mid, label=body.label, origins=body.origins, actor="admin")
+    except ValueError as exc:
+        raise HTTPException(422, detail={"code": "BAD_ORIGIN", "message": str(exc)}) from exc
+    return {**merchant_auth.token_public_view(row), "token": plaintext}
+
+
+@router.get("/admin/merchants/{mid}/tokens")
+def admin_list_tokens(
+    mid: str,
+    request: Request,
+    admin_token: str | None = Header(default=None, alias="X-Crumbs-Admin-Token"),
+    db: Session = Depends(get_db),
+    settings=Depends(_settings),
+):
+    """List a merchant's tokens (metadata only — hashes never leave)."""
+    _require_admin(settings, admin_token)
+    merchant = db.get(Merchant, mid)
+    if merchant is None:
+        raise HTTPException(404, detail={"code": "MERCHANT_NOT_FOUND",
+                                         "message": f"no merchant {mid}"})
+    return {"merchant_id": mid, "tokens": merchant_auth.list_tokens(db, mid)}
+
+
+@router.post("/admin/tokens/{token_id}/revoke")
+def admin_revoke_token(
+    token_id: str,
+    body: TokenRevokeRequest | None = None,
+    admin_token: str | None = Header(default=None, alias="X-Crumbs-Admin-Token"),
+    db: Session = Depends(get_db),
+    settings=Depends(_settings),
+):
+    """Revoke a per-merchant token — conversions using it start failing
+    immediately (403 TOKEN_REVOKED)."""
+    _require_admin(settings, admin_token)
+    try:
+        row = merchant_auth.revoke_token(
+            db, token_id=token_id,
+            reason=(body.reason if body else None), actor="admin")
+    except merchant_auth.MerchantAuthError as exc:
+        raise HTTPException(exc.status_code,
+                            detail={"code": exc.code, "message": exc.message}) from exc
+    return {"token_id": row.token_id, "merchant_id": row.mid, "status": row.status}
+
+
+# --- admin (revocation) -----------------------------------------------------
 
 
 @router.post("/admin/revoke", status_code=200)

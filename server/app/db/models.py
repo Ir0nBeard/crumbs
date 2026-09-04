@@ -127,6 +127,37 @@ class Merchant(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     programs: Mapped[list["MerchantProgram"]] = relationship(back_populates="merchant")
+    tokens: Mapped[list["MerchantToken"]] = relationship(back_populates="merchant")
+
+
+class MerchantToken(Base):
+    """Per-merchant API token — scoped credential for /v1/conversions.
+
+    Only the SHA-256 hash of the token is stored (the plaintext ``cmk_``
+    value is shown once at issuance). A token is bound to exactly one
+    merchant; conversions authenticated with it are scoped to that
+    merchant's receipts. Optional ``origins`` (JSON list of https origins)
+    further restrict browser-origin use of the token (scoped CORS).
+    """
+
+    __tablename__ = "merchant_tokens"
+    __table_args__ = (Index("ix_merchant_tokens_token_hash", "token_hash", unique=True),)
+
+    token_id: Mapped[str] = mapped_column(String(40), primary_key=True)  # "tok_" + ULID
+    mid: Mapped[str] = mapped_column(String(40), ForeignKey("merchants.mid"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    label: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # JSON array of https origins permitted to present this token from a
+    # browser (Origin header). NULL/empty = no origin restriction (server
+    # to server use); non-empty = browser requests from other origins are
+    # rejected (403 ORIGIN_NOT_ALLOWED).
+    origins: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")  # active|revoked
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    merchant: Mapped["Merchant"] = relationship(back_populates="tokens")
 
 
 class MerchantProgram(Base):

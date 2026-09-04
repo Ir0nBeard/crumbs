@@ -9,6 +9,31 @@ stable).
 
 ### Added
 
+- **Per-merchant keyed tokens + scoped CORS** (conversion credentials are
+  now merchant-scoped and revocable):
+  - `POST /v1/admin/merchants/{mid}/tokens` (admin) issues a `cmk_`
+    per-merchant token — the plaintext is returned ONCE, only its SHA-256
+    hash is stored at rest. Tokens are bound to exactly one merchant;
+    conversions authenticated with one are scoped to that merchant's
+    receipts (`TOKEN_MERCHANT_MISMATCH` 403 otherwise).
+  - `GET /v1/admin/merchants/{mid}/tokens` lists token metadata (never
+    hashes); `POST /v1/admin/tokens/{token_id}/revoke` revokes — failing
+    conversions immediately (`TOKEN_REVOKED` 403). Issuance/revocation
+    are appended to `audit_events`.
+  - **Scoped CORS**: a token may carry an `origins` allowlist (JSON list
+    of https origins) — browser requests (Origin header) from other
+    origins are rejected (`ORIGIN_NOT_ALLOWED` 403) while server-to-server
+    calls are unaffected. The app-level browser transport gate is
+    `CRUMBS_CORS_ORIGINS` (comma-separated; empty = no cross-origin
+    browser access, fail closed).
+  - `/v1/conversions` now enforces the body `merchant_id` equals the
+    receipt's merchant (`MERCHANT_MISMATCH` 422) instead of silently
+    ignoring the field.
+  - The legacy shared `CRUMBS_MERCHANT_API_KEY` remains accepted for
+    back-compatibility (deprecated); `CRUMBS_REQUIRE_MERCHANT_TOKENS=true`
+    makes per-merchant tokens mandatory and rejects the shared key.
+  - New table `merchant_tokens` (migration `0002_merchant_tokens.sql`,
+    alembic revision `0002`).
 - **Settlement-proof recording on the x402 rail** (the ledger half of
   real payout attribution):
   - `POST /v1/payouts/{pid}/settlement` (admin-token gated) records an

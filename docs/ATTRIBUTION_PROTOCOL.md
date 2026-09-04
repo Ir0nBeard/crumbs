@@ -89,11 +89,27 @@ region — so the "signed string" is unambiguous.
      inside the ERC-8021 Schema 2 suffix; the ledger *verifies* that suffix
      when recording a settlement proof (below).
 3. **Conversion** — at checkout, `POST /v1/conversions` with the receipt, the
-   merchant id, `order_id`, `cart_value_minor_units` (always minor units,
-   integer), and `currency`, plus an `Idempotency-Key: <rid>:<order_id>`
-   header. The ledger re-verifies everything (below) and returns
-   `201 {conversion_id, status: "pending", ...}`; a safe retry with the same
-   idempotency key returns the existing conversion (`200`, `idempotent: true`).
+  merchant id, `order_id`, `cart_value_minor_units` (always minor units,
+  integer), and `currency`, plus an `Idempotency-Key: <rid>:<order_id>`
+  header. The ledger re-verifies everything (below) and returns
+  `201 {conversion_id, status: "pending", ...}`; a safe retry with the same
+  idempotency key returns the existing conversion (`200`, `idempotent: true`).
+
+  **Merchant auth** — the recommended credential is a per-merchant keyed
+  token (`X-Crumbs-Key: cmk_…`, issued via
+  `POST /v1/admin/merchants/{mid}/tokens`): only its SHA-256 hash is stored,
+  the plaintext is shown once, and it is scoped to exactly one merchant —
+  a token cannot stamp another merchant's receipts
+  (`TOKEN_MERCHANT_MISMATCH` 403) and the body `merchant_id` must equal the
+  receipt's merchant (`MERCHANT_MISMATCH` 422). Tokens are revocable
+  (`POST /v1/admin/tokens/{token_id}/revoke` → `TOKEN_REVOKED` 403) and may
+  carry an `origins` allowlist for scoped CORS: browser-origin requests
+  (Origin header) from other origins are rejected (`ORIGIN_NOT_ALLOWED` 403)
+  while server-to-server calls are unaffected. The app-level browser
+  transport gate is `CRUMBS_CORS_ORIGINS` (empty = no cross-origin browser
+  access). The v0.1 shared `CRUMBS_MERCHANT_API_KEY` is accepted for
+  back-compatibility (deprecated); `CRUMBS_REQUIRE_MERCHANT_TOKENS=true`
+  makes per-merchant tokens mandatory.
 4. **Merchant confirmation** — `POST /v1/webhooks/orders` signed by the
    merchant (`X-Crumbs-Signature: hex HMAC-SHA256` over the **raw body**;
    body includes `t` unix-seconds inside the replay window, a required
