@@ -36,7 +36,11 @@ def _settings():
 
 class ConsentModel(BaseModel):
     basis: str = Field(..., pattern="^(gpp|tcf|explicit|88b)$")
-    ref: str | None = None
+    # gpp/tcf: the actual IAB GPP/TCF string. 88b: merchant-side
+    # consent/attestation record id. explicit: optional consent-record id.
+    # Server-side verification lives in services/consent.py (structural
+    # checks always run; CMP re-validation when CRUMBS_CMP_VERIFY_URL set).
+    ref: str | None = Field(None, max_length=2048)
 
 
 class JourneyRequest(BaseModel):

@@ -55,9 +55,22 @@ class Settings(BaseSettings):
     conversion_padding_tolerance_bps: int = 1000  # 10% cart-value tolerance
 
     # --- Consent (docs/ATTRIBUTION_PROTOCOL.md §6) -----------------------------
-    # Stubbed provider integration: if set, the server calls the CMP to
-    # re-validate consent signals. Empty -> trust the client signal (MVP).
+    # CMP re-validation endpoint (services/consent.py). When set, every
+    # gpp/tcf/88b signal that passes the LOCAL structural checks is POSTed
+    # here as JSON {"basis","ref","surface"} and must answer 2xx
+    # {"valid": true}; the CMP verdict is authoritative and anything else
+    # fails closed. When unset, the local structural checks are the whole
+    # gate (they replace the v0.1 "trust the client signal" behaviour).
     cmp_verify_url: str = ""
+    cmp_verify_timeout_seconds: float = 5.0
+    # Freshness bound for machine-readable consent signals. TCF requires
+    # re-consent within 13 months -> 400-day default.
+    max_consent_signal_age_seconds: int = 400 * 86400
+    # TCF EU: storage/access (purpose 1) is consent-only and is the purpose
+    # Crumbs journey identifiers ride on. Requiring it server-side is the
+    # point of the verifier; flip off only after legal review for
+    # non-EU-only deployments.
+    consent_tcf_require_purpose1: bool = True
 
     # --- Payouts -------------------------------------------------------------
     # Stub rail gating: actual x402/CDP or Stripe Connect settlement is NOT

@@ -126,8 +126,34 @@ for diagnostics only.
 
 No receipt is issued without a recorded consent basis. The ledger stores the
 basis/ref from the issuance call; the SDK and the WordPress plugin both refuse
-to issue pre-consent. Re-validation against a CMP (GPP/TCF/Consent Mode v2) is
-a v0.1 stub — see [CHANGELOG.md](../CHANGELOG.md).
+to issue pre-consent. The server verifies the signal it is handed
+(`server/app/services/consent.py` — no more blind "trust the client"):
+
+- `explicit` — record-mode; the issuance audit row is the record. `ref`
+  optional (names the merchant-side consent record when supplied).
+- `88b` — `ref` REQUIRED: the merchant-side consent/attestation record id.
+  The EU Data Omnibus (88a/88b) is still in trilogue; no wire standard exists
+  yet, so presence + auditability is all that can be verified (stated, not
+  hidden).
+- `tcf` — `ref` must be an IAB Europe TCF EU v2 TC string. The server decodes
+  the fixed 200-bit prefix and enforces: version 2, sane `created`, freshness
+  (default 400 days), alphabetic consent language, non-empty purposeConsents,
+  and purpose-1 (storage/access — consent-only under TCF, and the purpose
+  journey identifiers ride on) consent when
+  `CRUMBS_CONSENT_TCF_REQUIRE_PURPOSE1` (default true).
+- `gpp` — `ref` must be a spec-shaped GPP string (websafe-base64 "~"-joined
+  header + sections, header Type=3/Version=1). v1 checks shape and
+  decodability; per-section purpose semantics are not decoded yet (documented
+  limitation) — deep GPP verification requires the CMP endpoint below.
+
+When `CRUMBS_CMP_VERIFY_URL` is set, a locally-verified `gpp`/`tcf`/`88b`
+signal is POSTed to the CMP as JSON `{"basis","ref","surface"}` and must
+answer 2xx `{"valid": true}`; any other outcome fails closed
+(`CONSENT_REFUSED` 403, `CMP_UNREACHABLE` 503). Responses include
+`consent.verified` (`record` | `local` | `cmp`); audit events record
+`consent_mode` + `consent_checks`. New rejection codes:
+`CONSENT_INVALID` (422), `CONSENT_STALE` (403), `CONSENT_REFUSED` (403),
+`CMP_UNREACHABLE` (503). See [CHANGELOG.md](../CHANGELOG.md).
 
 ## 7. Reference implementation
 

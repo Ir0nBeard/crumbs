@@ -41,6 +41,7 @@ from ..db.models import (
 from ..db.session import audit
 from ..signing import SigningService
 from ..stores import fingerprint_ip, fingerprint_ua
+from .consent import ConsentError, verify_consent_signal
 
 log = logging.getLogger("crumbs.ledger")
 
@@ -117,14 +118,14 @@ def issue_journey(
         raise LedgerError(E_CONSENT_REQUIRED, "receipt issuance requires a recorded consent basis",
                           403, {"basis": basis})
 
-    # STUB: CMP re-validation (GPP/TCF/Consent Mode v2 provider integration).
-    # If CRUMBS_CMP_VERIFY_URL is set, the signal would be re-checked server-side.
-    if settings.cmp_verify_url:
-        raise LedgerError(
-            "CMP_UNCONFIGURED",
-            "server-side CMP re-validation is a STUB in v0.1; CRUMBS_CMP_VERIFY_URL must stay empty",
-            501,
-        )
+    # Server-side consent-signal verification (services/consent.py) — real
+    # verifier replacing the v0.1 501 STUB. Local structural checks
+    # always run; when CRUMBS_CMP_VERIFY_URL is set, the CMP's verdict is
+    # authoritative (fail-closed on any non-"valid": true outcome).
+    try:
+        consent_verdict = verify_consent_signal(consent, settings, surface=surface)
+    except ConsentError as exc:
+        raise LedgerError(exc.code, exc.message, exc.status_code, exc.extra) from exc
 
     # Rate limit issuance per IP (fake-journey control)
     if client_ip:
@@ -205,7 +206,9 @@ def issue_journey(
     db.add(receipt)
     audit(db, "journey_issued", "journey", jid, actor="agent:" + agent_id,
           payload={"rid": signed["rid"], "mid": mid, "surface": surface,
-                   "consent_basis": basis})
+                   "consent_basis": basis,
+                   "consent_mode": consent_verdict["mode"],
+                   "consent_checks": consent_verdict["checks"]})
     db.commit()
 
     return {
@@ -214,7 +217,8 @@ def issue_journey(
         "journey_id": jid,
         "agent_id": agent_id,
         "exp": signed["exp"],
-        "consent": {"basis": basis, "recorded": True},
+        "consent": {"basis": basis, "recorded": True,
+                    "verified": consent_verdict["mode"]},
     }
 
 

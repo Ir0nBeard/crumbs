@@ -65,7 +65,10 @@ class Journey(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     surface: Mapped[str] = mapped_column(String(8), nullable=False)
     consent_basis: Mapped[str] = mapped_column(String(16), nullable=False, default="explicit")
-    consent_ref: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # gpp/tcf: the wire signal string (TC/GPP strings exceed 128 chars, hence
+    # 2048); 88b/explicit: merchant-side consent-record id. Verified by
+    # services/consent.py before issuance.
+    consent_ref: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     ua_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 

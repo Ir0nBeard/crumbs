@@ -5,6 +5,37 @@ All notable changes to this project are documented here, in
 uses [Semantic Versioning](https://semver.org/) (0.x — public API is not yet
 stable).
 
+## [Unreleased]
+
+### Changed
+
+- **Consent verifier** — the v0.1 501 "CMP re-validation is a
+  STUB" fail-closed block in `ledger.issue_journey` is replaced by a real
+  server-side verifier (`server/app/services/consent.py`):
+  - `tcf`: `ref` must be an IAB Europe TCF EU v2 TC string — decoded and
+    checked server-side (version 2, sane 36-bit `created`, freshness within
+    `CRUMBS_MAX_CONSENT_SIGNAL_AGE_SECONDS` (400-day default), alphabetic
+    consent language, non-empty purposeConsents, and purpose-1 consent
+    required for storage-based attribution —
+    `CRUMBS_CONSENT_TCF_REQUIRE_PURPOSE1`, default true).
+  - `gpp`: `ref` must be a spec-shaped GPP string (websafe-base64
+    "~"-joined header + sections; header Type=3/Version=1 => leading "DB").
+    v1 validates shape/decodability; per-section purpose semantics are
+    deferred to the CMP endpoint (documented limitation).
+  - `88b`: `ref` is REQUIRED as the merchant-side consent/attestation audit
+    key (no wire standard exists — EU Data Omnibus still in trilogue).
+  - `explicit`: unchanged record-mode (the issuance audit row is the record).
+  - `CRUMBS_CMP_VERIFY_URL` (previously a 501 stub) now performs real CMP
+    re-validation: the locally-verified signal is POSTed as JSON
+    `{"basis","ref","surface"}` and must answer 2xx `{"valid": true}`; any
+    other outcome fails closed (`CONSENT_REFUSED` 403 / `CMP_UNREACHABLE`
+    503). Unset => local structural checks are the whole gate (the old
+    "trust the client signal" behaviour is gone).
+  - Journey responses now include `consent.verified` (`record|local|cmp`);
+    `journey_issued` audit payloads record `consent_mode` + `consent_checks`.
+  - `consent_ref` column widened 128 -> 2048 (real TC/GPP strings exceed 128
+    chars; the Postgres DDL was already TEXT, SQLAlchemy model now matches).
+
 ## [0.1.0] — 2026-08-29
 
 First release. A consent-native agent-journey attribution ledger: signed

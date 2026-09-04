@@ -1,6 +1,8 @@
 """Journey issuance API: consent gate, issuance shape, rate limiting."""
 from __future__ import annotations
 
+from test_consent_verifier import make_tc_string
+
 
 def test_journey_requires_consent(client, seeded_merchant):
     resp = client.post(
@@ -29,7 +31,7 @@ def test_journey_issuance_shape(client, seeded_merchant):
         json={
             "merchant_id": seeded_merchant.mid,
             "surface": "chat",
-            "consent": {"basis": "tcf", "ref": "tcstring-v2-abc"},
+            "consent": {"basis": "tcf", "ref": make_tc_string()},
         },
     )
     assert resp.status_code == 201, resp.text
@@ -37,7 +39,8 @@ def test_journey_issuance_shape(client, seeded_merchant):
     assert data["rid"].startswith("rct_")
     assert data["journey_id"].startswith("jrn_")
     assert data["agent_id"].startswith("ag_")
-    assert data["consent"] == {"basis": "tcf", "recorded": True}
+    assert data["consent"] == {"basis": "tcf", "recorded": True,
+                               "verified": "local"}
     # The wire receipt parses and verifies against the ledger's key
     from app.core.receipt import parse_receipt
 
