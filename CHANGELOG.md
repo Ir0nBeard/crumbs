@@ -9,6 +9,32 @@ stable).
 
 ### Added
 
+- **Headless browser-behaviour tests for the Chrome extension + a grant-flow
+  correctness fix**:
+  - New `tests/ext/` suite runs the extension's MV3 logic headlessly with a
+    faithful `chrome.*`/DOM mock harness (`node --test`, no browser or
+    display required): the per-site opt-in grant flow (single combined
+    `scripting` + host permission prompt, dynamic content-script registration,
+    idempotent re-enable), the popup's enable/disable/verify state machine
+    driven end-to-end through the service worker, and the content script's
+    page-state collection (JS mirror cookie `crumbs_jr`, SDK localStorage
+    receipts, agent-signal heuristics).
+  - Manifest conformance checks lock the privacy posture in place: MV3 with
+    only `storage` + `activeTab` at install, `scripting` and host access
+    optional, no `cookies` permission, no static `content_scripts` (the viewer
+    registers scripts dynamically per opted-in site), and no remote code.
+  - The content-script checks pin the merchant-cookie behaviour: the HttpOnly
+    `__Host-crumbs_j` receipt cookie stays server-side — never read from
+    extension code and never via `chrome.cookies`; the viewer reads only the
+    JS-visible mirror, exactly like the SDK.
+  - Grant-flow fix in `ext/background.js`: a site used to be recorded in
+    `enabled_sites` BEFORE the permission prompt resolved, so a denied prompt
+    left the site listed as enabled with no host permission and no content
+    script behind it (the popup would offer "Disable on this site" for a site
+    that was never actually viewable). The optional `scripting` permission is
+    now requested together with the host permission in one prompt, and the
+    site is persisted only after the grant. Disabling the last enabled site
+    additionally drops the now-unused `scripting` permission.
 - **Live Postgres/Redis test coverage + conversion concurrency hardening**:
   - New `tests/server/test_live_infra.py` runs the canonical migration SQL
     (`server/migrations/0001_init.sql`, `0002_merchant_tokens.sql`) against a

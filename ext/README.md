@@ -4,7 +4,8 @@ A developer-facing viewer for Crumbs attribution receipts. Shows whether the
 current page carries a Crumbs journey receipt and any heuristic agent signals,
 and lets you *verify* a receipt against the ledger you configure.
 
-**Status:** v0.1 scaffold. Not yet submitted to any store.
+**Status:** v0.1 scaffold — browser behaviour covered by the headless
+`tests/ext/` suite (see Testing); not yet submitted to any store.
 
 ## Load it (development)
 
@@ -36,6 +37,25 @@ is disabled until one is set.
 * `content.js` — reads mirror cookie / SDK storage / agent signals on opt-in sites
 * `popup/` — receipt/journey viewer + privacy disclosure
 * `PRIVACY.md` — store-ready disclosure text
+
+## Testing
+
+Browser behaviour is covered headlessly — no browser or display required:
+
+```sh
+node --test tests/ext/          # Node >= 18, run from the repo root
+```
+
+The suite loads `background.js`, `content.js`, and `popup/popup.js` in a mocked
+`chrome.*`/DOM harness and drives the real flows: install initialisation, the
+per-site opt-in grant flow (including a **denied** permission prompt — a
+regression test pins the fix that a site is never recorded as enabled until
+the user actually grants access), popup enable/disable/verify state
+transitions end-to-end through the service worker, content-script collection
+(mirror cookie, SDK receipt, agent signals), and MV3 manifest conformance
+(minimal install permissions, dynamic content-script registration, no
+`cookies` permission, no remote code). A real-browser pass (manual or CI with
+Chromium) remains part of store packaging.
 
 ## Not in v0.1 (stubs / future)
 

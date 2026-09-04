@@ -22,27 +22,23 @@ chrome.runtime.onInstalled.addListener(() => {
 
 /**
  * Enable the viewer on `origin` (e.g. "https://shop.example").
- * Requests the optional host permission, then registers the content script.
- * All state lives in chrome.storage.local (per-extension, not shared).
+ *
+ * Requests the optional "scripting" permission and the per-site host
+ * permission in ONE prompt (MV3 groups optional grants), then registers the
+ * content script. The site is recorded in storage ONLY after the grant, so a
+ * denied prompt can never leave the site listed as enabled while no script or
+ * host permission exists. All state lives in chrome.storage.local.
  */
 async function enableForSite(origin) {
-  const { [STORAGE_KEYS.enabledSites]: enabled = [] } = await chrome.storage.local.get(
-    STORAGE_KEYS.enabledSites
-  );
-  if (!enabled.includes(origin)) {
-    await chrome.storage.local.set({ [STORAGE_KEYS.enabledSites]: [...enabled, origin] });
-  }
-  const granted = await chrome.permissions.request({ origins: [origin + "/*"] });
+  const granted = await chrome.permissions.request({
+    permissions: ["scripting"],
+    origins: [origin + "/*"],
+  });
   if (!granted) {
     throw new Error("permission not granted by user");
   }
-  if (!chrome.scripting) {
-    // scripting permission not yet granted — request it on the same gesture
-    const scriptingGranted = await chrome.permissions.request({ permissions: ["scripting"] });
-    if (!scriptingGranted) throw new Error("scripting permission not granted");
-  }
-  const existing = await chrome.scripting.getRegisteredContentScripts();
   const scriptId = "crumbs_viewer_" + origin.replace(/[^a-z0-9]/gi, "_");
+  const existing = await chrome.scripting.getRegisteredContentScripts();
   if (!existing.some((s) => s.id === scriptId)) {
     await chrome.scripting.registerContentScripts([
       {
@@ -53,17 +49,27 @@ async function enableForSite(origin) {
       },
     ]);
   }
+  const { [STORAGE_KEYS.enabledSites]: enabled = [] } = await chrome.storage.local.get(
+    STORAGE_KEYS.enabledSites
+  );
+  if (!enabled.includes(origin)) {
+    await chrome.storage.local.set({ [STORAGE_KEYS.enabledSites]: [...enabled, origin] });
+  }
   return true;
 }
 
-/** Disable the viewer for `origin`: unregister script + drop the permission. */
+/**
+ * Disable the viewer for `origin`: unregister script + drop the permissions.
+ * When the last enabled site is removed, the optional "scripting" permission
+ * is dropped too — nothing else in the extension uses it, so least-privilege
+ * is restored (the granted host permission is always removed per site).
+ */
 async function disableForSite(origin) {
   const { [STORAGE_KEYS.enabledSites]: enabled = [] } = await chrome.storage.local.get(
     STORAGE_KEYS.enabledSites
   );
-  await chrome.storage.local.set({
-    [STORAGE_KEYS.enabledSites]: enabled.filter((o) => o !== origin),
-  });
+  const remaining = enabled.filter((o) => o !== origin);
+  await chrome.storage.local.set({ [STORAGE_KEYS.enabledSites]: remaining });
   const scriptId = "crumbs_viewer_" + origin.replace(/[^a-z0-9]/gi, "_");
   try {
     await chrome.scripting.unregisterContentScripts({ ids: [scriptId] });
@@ -71,6 +77,13 @@ async function disableForSite(origin) {
     /* not registered — fine */
   }
   await chrome.permissions.remove({ origins: [origin + "/*"] });
+  if (remaining.length === 0) {
+    try {
+      await chrome.permissions.remove({ permissions: ["scripting"] });
+    } catch (e) {
+      /* not granted — fine */
+    }
+  }
   return true;
 }
 
