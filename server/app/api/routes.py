@@ -6,6 +6,8 @@ Endpoints:
   GET    /v1/verify           receipt status check
   POST   /v1/webhooks/orders  merchant signed order confirmation
   POST   /v1/payouts/batch    payout scheduling (records only — no float)
+  POST   /v1/payouts/{pid}/settlement   record a rail settlement proof (admin)
+  GET    /v1/payouts/{pid}    payout record + splits (proof envelope; admin)
   POST   /v1/admin/revoke     revocation (env-gated admin token)
   GET    /v1/health           liveness
 """
@@ -77,6 +79,28 @@ class PayoutBatchRequest(BaseModel):
     limit: int = Field(500, ge=1, le=5000)
 
 
+class PayoutSettlementRequest(BaseModel):
+    """Proof of an executed rail settlement (recorded here; money moves
+    off-ledger on the licensed rail). With `calldata`, the ERC-8021 Schema 2
+    suffix is parsed and must carry `builder_code` — an on-chain proof.
+    Without it, the record is a rail attestation (`rail_ref` mode)."""
+
+    tx_hash: str = Field(..., pattern="^0x[0-9a-fA-F]{64}$",
+                         description="EVM transaction hash of the settlement")
+    calldata: str | None = Field(
+        None, pattern="^0x[0-9a-fA-F]*$", max_length=262144,
+        description="settlement calldata hex — optional; proves the builder code on-chain")
+    builder_code: str = Field("bc_crumbs", pattern="^[a-z0-9_]{1,32}$")
+    referral_ref: str | None = Field(
+        None, max_length=40,
+        description="journey/receipt id echoed in the x402 PAYMENT-RESPONSE referral (rct_/jrn_)")
+    rail_ref: str | None = Field(None, max_length=255,
+                                 description="facilitator/rail-side settlement reference")
+    asset: str = Field("USDC", max_length=16)
+    network: str = Field("eip155:8453", max_length=64)
+    executed_by: str = Field("rail", max_length=64)
+
+
 # --- error mapping -----------------------------------------------------------
 
 
@@ -85,6 +109,28 @@ def _ledger_error_to_http(exc: ledger.LedgerError) -> HTTPException:
         status_code=exc.status_code,
         detail={"code": exc.code, "message": str(exc), **(exc.extra or {})},
     )
+
+
+def _payout_error_to_http(exc: payouts.PayoutError) -> HTTPException:
+    return HTTPException(
+        status_code=exc.status_code,
+        detail={"code": exc.code, "message": str(exc)},
+    )
+
+
+def _require_admin(settings, admin_token: str | None):
+    """Env-gated admin gate shared by the money-adjacent endpoints.
+
+    Mirrors /v1/admin/revoke semantics: 501 while CRUMBS_ADMIN_TOKEN is
+    unset (fail closed), 401 on a bad token.
+    """
+    import secrets
+
+    if not settings.admin_token:
+        raise HTTPException(501, detail={"code": "ADMIN_DISABLED",
+                                         "message": "admin endpoints disabled (CRUMBS_ADMIN_TOKEN unset)"})
+    if not secrets.compare_digest(admin_token or "", settings.admin_token):
+        raise HTTPException(401, detail={"code": "UNAUTHORIZED", "message": "bad admin token"})
 
 
 # --- journeys ----------------------------------------------------------------
@@ -292,7 +338,60 @@ def payout_batch(
     try:
         return payouts.schedule_payouts(db, limit=body.limit, settings=settings)
     except payouts.PayoutError as exc:
-        raise HTTPException(exc.status_code, detail={"code": exc.code, "message": str(exc)}) from exc
+        raise _payout_error_to_http(exc) from exc
+
+
+@router.post("/payouts/{pid}/settlement", status_code=200)
+def payout_settlement(
+    pid: str,
+    body: PayoutSettlementRequest,
+    request: Request,
+    admin_token: str | None = Header(default=None, alias="X-Crumbs-Admin-Token"),
+    db: Session = Depends(get_db),
+    settings=Depends(_settings),
+):
+    """Record a rail settlement proof against a scheduled payout (admin).
+
+    Money does not move through this endpoint — the licensed rail executed
+    the transfer off-ledger; this records the proof (see
+    services/payouts.py). With `calldata`, the ERC-8021 Schema 2 builder-code
+    suffix must carry `builder_code` (`bc_crumbs`) — on-chain proof mode.
+    """
+    _require_admin(settings, admin_token)
+    try:
+        return payouts.record_settlement(
+            db,
+            pid,
+            tx_hash=body.tx_hash,
+            calldata=body.calldata,
+            builder_code=body.builder_code,
+            referral_ref=body.referral_ref,
+            rail_ref=body.rail_ref,
+            asset=body.asset,
+            network=body.network,
+            executed_by=body.executed_by,
+            settings=settings,
+        )
+    except payouts.PayoutError as exc:
+        raise _payout_error_to_http(exc) from exc
+
+
+@router.get("/payouts/{pid}", status_code=200)
+def payout_detail(
+    pid: str,
+    request: Request,
+    admin_token: str | None = Header(default=None, alias="X-Crumbs-Admin-Token"),
+    db: Session = Depends(get_db),
+    settings=Depends(_settings),
+):
+    """Payout record + splits (proof envelope). Admin-gated: ledger records
+    are not public (no PII is exposed, but amounts are merchant data)."""
+    _require_admin(settings, admin_token)
+    record = payouts.get_payout(db, pid)
+    if record is None:
+        raise HTTPException(404, detail={"code": "PAYOUT_NOT_FOUND",
+                                         "message": f"no payout record {pid}"})
+    return record
 
 
 # --- admin (revocation) ------------------------------------------------------

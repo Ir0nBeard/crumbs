@@ -7,6 +7,33 @@ stable).
 
 ## [Unreleased]
 
+### Added
+
+- **Settlement-proof recording on the x402 rail** (the ledger half of
+  real payout attribution):
+  - `POST /v1/payouts/{pid}/settlement` (admin-token gated) records an
+    executed rail settlement against a `scheduled` payout: `tx_hash`
+    (0x-64-hex EVM), optional `rail_ref` (facilitator reference), optional
+    `referral_ref` (the `rct_`/`jrn_` id echoed by an x402 PAYMENT-RESPONSE
+    referral), `asset`, `network`. Splits roll to `settled`; the transition
+    is appended to `audit_events` (`payout_settled`).
+  - **ERC-8021 Schema 2 on-chain verification** (`server/app/core/
+    buildercode.py`, zero-dependency CBOR codec): when settlement
+    `calldata` is supplied, the ledger parses its builder-code suffix
+    (marker `80218021…`, schema id `0x02`, big-endian CBOR length, CBOR map
+    of `a`/`w`/`s` codes, each matching `^[a-z0-9_]{1,32}$`) and REQUIRES
+    it to carry `bc_crumbs` — `proof_mode: "onchain"`. Without calldata the
+    record is a labelled rail attestation (`proof_mode: "attestation"`),
+    never presented as an on-chain proof. Money still never moves through
+    the ledger: the record is proof of an off-ledger rail settlement.
+  - `GET /v1/payouts/{pid}` (admin) returns the proof envelope: payout
+    record + splits + proof fields.
+- **SDK carrier hardening** — `getX402ReferralField()` now returns null
+  without a receipt (never a half-built object) and supports
+  `{refer: "rid"}` (receipt id) alongside the journey-id default;
+  `getBuilderCode()` documented against the ERC-8021 code format. IIFE
+  bundle + WordPress vendored copy rebuilt.
+
 ### Changed
 
 - **Consent verifier** — the v0.1 501 "CMP re-validation is a

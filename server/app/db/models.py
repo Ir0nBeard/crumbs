@@ -198,8 +198,17 @@ class Payout(Base):
     scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     tx_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    # STUB: settlement execution (x402/CDP facilitator, Stripe Connect) is NOT
-    # implemented in v0.1 — scheduling records only, NO float held.
+    # Settlement proof (x402 rail): a settlement RECORD is created here by an
+    # operator/rail executor (admin-gated); the ledger never holds or moves
+    # funds. When `proof_calldata` was supplied the ERC-8021 Schema 2 suffix
+    # was parsed and MUST have carried `builder_code` (on-chain mode);
+    # otherwise the record is a rail attestation (rail_ref mode).
+    builder_code: Mapped[str | None] = mapped_column(String(32), nullable=True)  # bc_crumbs
+    referral_ref: Mapped[str | None] = mapped_column(String(40), nullable=True)  # rct_/jrn_ id echoed in PAYMENT-RESPONSE
+    rail_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)  # facilitator/rail-side settlement reference
+    asset: Mapped[str | None] = mapped_column(String(16), nullable=True)  # e.g. USDC
+    network: Mapped[str | None] = mapped_column(String(64), nullable=True)  # e.g. eip155:8453
+    proof_mode: Mapped[str | None] = mapped_column(String(16), nullable=True)  # onchain|attestation
 
 
 class Dispute(Base):

@@ -211,11 +211,21 @@ test("verifyReceipt hits POST /v1/verify", async () => {
 
 test("carriers: header value, x402 referral field, builder code", () => {
   const crumbs = createCrumbs({});
+  assert.equal(crumbs.getHeaderValue(), "");
+  // No receipt -> referral field is null, never a half-built object
+  assert.equal(crumbs.getX402ReferralField(), null);
+  assert.equal(crumbs.getX402ReferralField("not-json"), null);
+
   crumbs.setReceipt(JSON.stringify(RECEIPT));
   assert.equal(crumbs.getHeaderValue(), JSON.stringify(RECEIPT));
-  const ref = crumbs.getX402ReferralField();
-  assert.deepEqual(ref, { referral: { ref: RECEIPT.jid, provider: "crumbs" } });
+  // jid (journey id) is the default referral ref; rid is opt-in
+  assert.deepEqual(crumbs.getX402ReferralField(), { referral: { ref: RECEIPT.jid, provider: "crumbs" } });
+  assert.deepEqual(crumbs.getX402ReferralField(null, { refer: "rid" }), { referral: { ref: RECEIPT.rid, provider: "crumbs" } });
+  // explicit wire arg still works alongside opts
+  assert.deepEqual(crumbs.getX402ReferralField(JSON.stringify(RECEIPT), { refer: "rid" }), { referral: { ref: RECEIPT.rid, provider: "crumbs" } });
+  // ERC-8021 builder code: registered code, within the 32-char cap
   assert.equal(crumbs.getBuilderCode(), "bc_crumbs");
+  assert.ok(/^[a-z0-9_]{1,32}$/.test(crumbs.getBuilderCode()), "ERC-8021 code format");
   assert.ok(crumbs.getBuilderCode().length <= 32, "ERC-8021 32-char code limit");
 });
 

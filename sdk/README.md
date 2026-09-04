@@ -56,9 +56,13 @@ host.
 * Cookie: the merchant SERVER sets `__Host-crumbs_j` (Secure+HttpOnly+SameSite=Lax).
   The SDK reads the short-TTL JS mirror `crumbs_jr` via `getCookieValue()`.
 * Header (API agents): `X-Crumbs-Journey: <receipt>` via `getHeaderValue()`.
-* x402 PAYMENT-RESPONSE referral (later phase): `getX402ReferralField()` →
-  `{referral:{ref:jid, provider:"crumbs"}}`.
-* ERC-8021 builder code (later phase): `getBuilderCode()` → `bc_crumbs`.
+* x402 PAYMENT-RESPONSE referral: `getX402ReferralField()` →
+  `{referral:{ref:jid, provider:"crumbs"}}` (journey id by default;
+  `{refer: "rid"}` opts into the receipt id; null without a receipt).
+* ERC-8021 builder code: `getBuilderCode()` → `bc_crumbs`
+  (`/^[a-z0-9_]{1,32}$/`); a facilitator appends it to settlement calldata
+  as an `s` service code and the ledger verifies the on-chain suffix when
+  recording a settlement proof.
 
 ## WebMCP
 

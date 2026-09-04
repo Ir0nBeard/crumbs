@@ -177,15 +177,28 @@ function createCrumbs(config) {
     return receiptWire || state.receiptWire || "";
   }
 
-  /** x402 PAYMENT-RESPONSE referral field (later phase; stub shape). */
-  function getX402ReferralField(receiptWire) {
+  /** x402 PAYMENT-RESPONSE referral field (docs/ATTRIBUTION_PROTOCOL.md §4.3):
+   *  emits {"referral": {"ref": "<journey|receipt id>", "provider": "crumbs"}} —
+   *  the field shape proposed for cross-vendor x402 referral attribution.
+   *  Defaults to the journey id (jid, the cross-merchant stitching key);
+   *  pass {refer: "rid"} for the single-receipt id. Returns null when no
+   *  receipt is loaded (or the wire is unparseable) — never a half-built
+   *  object. */
+  function getX402ReferralField(receiptWire, opts) {
     var wire = receiptWire || state.receiptWire;
     if (!wire) return null;
     var parsed = parseWire(wire);
-    return { referral: { ref: parsed ? parsed.jid : null, provider: "crumbs" } };
+    if (!parsed) return null;
+    var refer = (opts && opts.refer === "rid") ? parsed.rid : parsed.jid;
+    if (!refer) return null;
+    return { referral: { ref: refer, provider: "crumbs" } };
   }
 
-  /** ERC-8021 Schema 2 builder code (later phase; 32-char limit). */
+  /** ERC-8021 Schema 2 builder code (docs/ATTRIBUTION_PROTOCOL.md §4.4):
+   *  bc_crumbs — /^[a-z0-9_]{1,32}$/ (the ERC-8021 builder-code format).
+   *  A facilitator appends it to settlement calldata as an `s` service code;
+   *  the ledger verifies the on-chain suffix carries it when recording a
+   *  settlement proof. */
   function getBuilderCode() {
     return "bc_crumbs"; // fits /^[a-z0-9_]{1,32}$/
   }

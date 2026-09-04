@@ -57,9 +57,10 @@ The steps in words:
    - first-party cookie (`__Host-crumbs_j`, HttpOnly — set server-side by the
      merchant; the SDK reads only a short-TTL JS mirror),
    - HTTP header (`X-Crumbs-Journey`) for API-level agents,
-   - the x402 `PAYMENT-RESPONSE` referral field (shape provided by the SDK;
-     live payment-path integration is a later phase),
-   - an ERC-8021 builder code (`bc_crumbs`; same later-phase caveat).
+   - the x402 `PAYMENT-RESPONSE` referral field (`getX402ReferralField()` in
+     the SDK emits `{"referral": {"ref": <jid>, "provider": "crumbs"}}`),
+   - an ERC-8021 builder code (`bc_crumbs` — `getBuilderCode()`; a
+     facilitator appends it to settlement calldata as an `s` service code).
 3. **Ledger verify.** At checkout, the merchant stamps the conversion
    (`POST /v1/conversions`, idempotent on receipt rid + order id). The ledger
    re-verifies everything server-side — signature, nonce replay, expiry,
@@ -72,11 +73,15 @@ The steps in words:
    `pending → finalized|cancelled|refunded` transitions, cart value
    cross-checked against the confirmed order). Only a `finalized` conversion is
    payable.
-5. **Payout scheduling.** `POST /v1/payouts/batch` turns finalized conversions
-   into payout records (owner share, network take, splits). **Records only**:
-   Crumbs never holds or moves funds. Settlement is delegated to licensed rails
-   (x402/USDC facilitator or Stripe Connect) — stubbed in v0.1 and gated off by
-   default (see CHANGELOG.md).
+5. **Payout scheduling + proof recording.** `POST /v1/payouts/batch` turns
+   finalized conversions into payout records (owner share, network take,
+   splits). **Records only**: Crumbs never holds or moves funds — settlement
+   executes on licensed rails (x402/USDC facilitator or Stripe Connect).
+   `POST /v1/payouts/{pid}/settlement` (admin) then records the rail's
+   settlement proof: with the settlement calldata it parses the ERC-8021
+   Schema 2 builder-code suffix and requires it to carry `bc_crumbs`
+   (on-chain proof); without calldata the record is a labelled rail
+   attestation. See docs/ATTRIBUTION_PROTOCOL.md §4.5.
 
 ## Pieces
 

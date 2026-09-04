@@ -131,7 +131,18 @@ CREATE TABLE IF NOT EXISTS payouts (
     status       TEXT NOT NULL DEFAULT 'scheduled',
     scheduled_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     settled_at   TIMESTAMPTZ,
-    tx_hash      TEXT
+    tx_hash      TEXT,
+    -- Settlement proof (x402 rail). The ledger records rail settlements
+    -- (admin-gated) and never holds or moves funds itself. When
+    -- proof_calldata was supplied, the ERC-8021 Schema 2 suffix was parsed
+    -- and had to carry builder_code (on-chain proof mode); otherwise the
+    -- record is a rail attestation (rail_ref mode).
+    builder_code TEXT,
+    referral_ref TEXT,
+    rail_ref     TEXT,
+    asset        TEXT,
+    network      TEXT,
+    proof_mode   TEXT
 );
 
 CREATE TABLE IF NOT EXISTS disputes (

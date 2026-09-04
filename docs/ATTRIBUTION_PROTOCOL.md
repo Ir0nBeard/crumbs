@@ -78,10 +78,16 @@ region — so the "signed string" is unambiguous.
    - **Cookie** — the merchant server sets `__Host-crumbs_j` (Secure, HttpOnly,
      SameSite=Lax); JS can read only a short-TTL mirror (`crumbs_jr`).
    - **Header** — `X-Crumbs-Journey: <receipt>` for API-level agents.
-   - **x402 referral field** (later phase) — `getX402ReferralField()` produces
-     `{"referral": {"ref": <journey_id>, "provider": "crumbs"}}`.
-   - **ERC-8021 builder code** (later phase) — `bc_crumbs`
-     (matches `/^[a-z0-9_]{1,32}$/`).
+   - **x402 referral field** — the SDK's `getX402ReferralField()` emits
+     `{"referral": {"ref": <journey_id>, "provider": "crumbs"}}` (journey id
+     by default — the cross-merchant stitching key — or the receipt id via
+     `{refer: "rid"}`) for an x402 `PAYMENT-RESPONSE`. The ledger binds the
+     echoed `ref` at settlement-record time (`referral_ref` on the payout).
+   - **ERC-8021 builder code** — `bc_crumbs` (matches
+     `/^[a-z0-9_]{1,32}$/`; the SDK exposes it via `getBuilderCode()`). A
+     facilitator appends it to settlement calldata as an `s` service code
+     inside the ERC-8021 Schema 2 suffix; the ledger *verifies* that suffix
+     when recording a settlement proof (below).
 3. **Conversion** — at checkout, `POST /v1/conversions` with the receipt, the
    merchant id, `order_id`, `cart_value_minor_units` (always minor units,
    integer), and `currency`, plus an `Idempotency-Key: <rid>:<order_id>`
@@ -97,8 +103,23 @@ region — so the "signed string" is unambiguous.
    terminal states stay terminal. The confirmed cart value is cross-checked
    against the stamped value (conversion-padding control).
 5. **Payout** — finalized conversions become payout *records* via
-   `POST /v1/payouts/batch` (admin-token gated). Settlement itself runs on
-   licensed rails outside this ledger (see ARCHITECTURE.md — v0.1 stub).
+   `POST /v1/payouts/batch` (admin-token gated). Settlement itself executes
+   on licensed rails outside this ledger, which never holds or moves funds.
+   What the ledger records is the **settlement proof**:
+   `POST /v1/payouts/{pid}/settlement` (admin-token gated) transitions a
+   `scheduled` payout to `settled` with the rail's `tx_hash`, an optional
+   `rail_ref` (facilitator-side reference), and optional `referral_ref` (the
+   `rct_`/`jrn_` id echoed by an x402 PAYMENT-RESPONSE referral). When the
+   caller supplies the settlement `calldata`, the ledger parses its ERC-8021
+   Schema 2 suffix (`server/app/core/buildercode.py`: marker
+   `80218021…`, schema id `0x02`, big-endian CBOR length, CBOR map of `a`/`w`/
+   `s` codes) and **requires the suffix to carry `bc_crumbs`** — an on-chain
+   proof (`proof_mode: "onchain"`). Without calldata the record is a rail
+   attestation (`proof_mode: "attestation"`, `rail_ref` required in practice)
+   and is never presented as an on-chain proof. Every transition is appended
+   to `audit_events` (`payout_scheduled`, `payout_settled`); the splits roll
+   to `settled` with the payout. `GET /v1/payouts/{pid}` (admin) returns the
+   full proof envelope: record + splits + proof fields.
 
 ## 5. Verification semantics
 
