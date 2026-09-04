@@ -9,6 +9,34 @@ stable).
 
 ### Added
 
+- **Secret-manager indirection for merchant webhook secrets** (credential
+  material out of the ledger database):
+  - New `server/app/core/secrets.py`: a merchant's `webhook_secret` column
+    now holds a **reference** — `secretref:env:<NAME>` — resolved from the
+    service environment at verification time. The material never touches the
+    database; unresolvable references fail closed (`401 BAD_SIGNATURE`), and
+    any value under the `secretref:` scheme that is not a well-formed env
+    reference is never treated as a literal.
+  - New admin endpoints (admin-token gated): `POST`/`GET`/`DELETE
+    /v1/admin/merchants/{mid}/webhook-secret` manage the reference. Writes
+    are fail-fast: an env reference whose variable is unset in the process is
+    refused (`422 UNRESOLVABLE_REF`); responses are masked and never contain
+    the material. Set/clear events are appended to `audit_events`.
+  - New `CRUMBS_ENFORCE_SECRET_REFS` strict mode: on a non-SQLite database a
+    literal value resolves to nothing (fail closed) and the admin API refuses
+    to store one (`422 SECRET_REF_REQUIRED`). Default `false` preserves
+    back-compatibility while deployments migrate. The known dev-default
+    literal keeps its absolute guard outside SQLite.
+  - WordPress plugin: the merchant key is read from the
+    `CRUMBS_MERCHANT_API_KEY` constant in `wp-config.php` when defined (the
+    key never enters `wp_options`); the settings UI shows the source and no
+    longer echoes a stored key back into the page; saving with the constant
+    defined clears the legacy option row.
+  - Docs: `docs/SECRET_MANAGEMENT.md` — inventory of where every credential
+    lives, the HMAC webhook-secret rotation runbook (fail-closed sequence
+    with rollback), and token/signing-key rotation notes.
+  - Dependency manifest: `server/requirements.lock` — exact pins with SHA-256
+    hashes (`uv pip compile --generate-hashes`) for reproducible installs.
 - **Per-merchant keyed tokens + scoped CORS** (conversion credentials are
   now merchant-scoped and revocable):
   - `POST /v1/admin/merchants/{mid}/tokens` (admin) issues a `cmk_`

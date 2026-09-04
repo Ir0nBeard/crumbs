@@ -120,9 +120,12 @@ class Merchant(Base):
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     owner_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
-    # v0.1 keeps the webhook signing secret here for local dev; production
-    # MUST move it to a secret manager (KMS/encrypted vault) and store only a
-    # reference. The dev default is rejected outside SQLite.
+    # The webhook signing secret is stored as a REFERENCE in production:
+    # `secretref:env:<NAME>` — the material lives in the service environment
+    # and is resolved by core/secrets.py at verification time; it never
+    # touches this database. Literal values are local-SQLite-dev only and
+    # resolve to nothing in strict mode (CRUMBS_ENFORCE_SECRET_REFS=true)
+    # on a non-SQLite database. The dev default is rejected outside SQLite.
     webhook_secret: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

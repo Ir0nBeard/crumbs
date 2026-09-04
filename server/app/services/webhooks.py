@@ -24,6 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
+from ..core.secrets import resolve_secret
 from ..db.models import Conversion, Merchant
 from ..db.session import audit
 
@@ -51,16 +52,13 @@ def _hmac_hex(secret: bytes, body: bytes) -> str:
     return hmac.new(secret, body, hashlib.sha256).hexdigest()
 
 
-def verify_webhook_signature(merchant: Merchant, body: bytes, signature: str) -> bool:
+def verify_webhook_signature(secret: str, body: bytes, signature: str) -> bool:
     """HMAC-SHA256 over the RAW request body, hex-encoded, constant-time compare.
 
-    STUB NOTE: in production the merchant's webhook secret lives in a secret
-    manager (KMS/encrypted), NOT in the DB; v0.1 keeps it on the merchants row
-    and guards the dev default (see process_order_webhook).
+    ``secret`` is the RESOLVED signing material (core/secrets.py) — never
+    the raw database column, which holds a reference in production.
     """
-    if not merchant.webhook_secret:
-        return False
-    expected = _hmac_hex(merchant.webhook_secret.encode("utf-8"), body)
+    expected = _hmac_hex(secret.encode("utf-8"), body)
     return hmac.compare_digest(expected, signature or "")
 
 
@@ -86,7 +84,18 @@ def process_order_webhook(
         raise WebhookError("DEV_SECRET_GUARD",
                            "merchant webhook secret is the dev default — refusing", 500)
 
-    if not verify_webhook_signature(merchant, body, signature):
+    # Secret resolution (core/secrets.py): the column holds a
+    # `secretref:env:<NAME>` reference in production and the material lives
+    # in the service environment. Literal values are local-dev only: in
+    # strict mode (CRUMBS_ENFORCE_SECRET_REFS=true) a literal on a
+    # non-SQLite database resolves to nothing, so verification fails closed
+    # instead of authenticating with database-resident material.
+    secret = resolve_secret(
+        merchant.webhook_secret,
+        enforce_refs=settings.enforce_secret_refs,
+        literal_ok=settings.database_url.startswith("sqlite"),
+    )
+    if secret is None or not verify_webhook_signature(secret, body, signature):
         raise WebhookError("BAD_SIGNATURE", "webhook signature invalid", 401)
 
     try:

@@ -11,6 +11,10 @@ Endpoints:
   POST   /v1/admin/merchants/{mid}/tokens       issue a per-merchant token (admin)
   GET    /v1/admin/merchants/{mid}/tokens       list per-merchant tokens (admin)
   POST   /v1/admin/tokens/{token_id}/revoke     revoke a per-merchant token (admin)
+  POST/GET/DELETE /v1/admin/merchants/{mid}/webhook-secret
+                                    manage a merchant's webhook signing
+                                    secret REFERENCE (admin; material is
+                                    never stored or returned)
   POST   /v1/admin/revoke     revocation (env-gated admin token)
   GET    /v1/health           liveness
 """
@@ -24,8 +28,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
+from ..core.secrets import SECRETREF_SCHEME, resolve_secret, secret_ref_env_name
 from ..db.models import Merchant, Receipt
-from ..db.session import get_db
+from ..db.session import audit, get_db
 from ..services import ledger, merchant_auth, payouts, webhooks
 
 log = logging.getLogger("crumbs.api")
@@ -88,6 +93,18 @@ class TokenCreateRequest(BaseModel):
 
 class TokenRevokeRequest(BaseModel):
     reason: str | None = Field(None, max_length=500)
+
+
+class WebhookSecretRequest(BaseModel):
+    """A merchant webhook signing secret to store as a REFERENCE.
+
+    ``value`` is either a ``secretref:env:<NAME>`` reference (production —
+    the material must already exist in the service environment) or a
+    literal (local SQLite development only; refused in strict mode). The
+    material itself is never stored in or returned from the database.
+    """
+
+    value: str = Field(..., min_length=1, max_length=512)
 
 
 class PayoutBatchRequest(BaseModel):
@@ -500,6 +517,145 @@ def admin_revoke_token(
         raise HTTPException(exc.status_code,
                             detail={"code": exc.code, "message": exc.message}) from exc
     return {"token_id": row.token_id, "merchant_id": row.mid, "status": row.status}
+
+
+# --- admin (merchant webhook secrets — references only) ---------------------
+
+
+def _webhook_secret_view(merchant: Merchant, settings) -> dict:
+    """Masked view of a merchant's webhook-secret configuration.
+
+    Never includes the stored value or the resolved material. ``mode`` is
+    ``env-ref`` (reference into the service environment), ``literal``
+    (local-dev only), or None. ``resolvable`` mirrors exactly what
+    verification-time resolution (webhooks.process_order_webhook) would
+    find — including strict-mode literal rejection.
+    """
+    stored = merchant.webhook_secret
+    if not stored:
+        return {"configured": False, "mode": None, "env_var": None, "resolvable": None}
+    resolved = resolve_secret(
+        stored,
+        enforce_refs=settings.enforce_secret_refs,
+        literal_ok=settings.database_url.startswith("sqlite"),
+    )
+    return {
+        "configured": True,
+        "mode": "env-ref" if secret_ref_env_name(stored) else "literal",
+        "env_var": secret_ref_env_name(stored),
+        "resolvable": resolved is not None,
+    }
+
+
+@router.post("/admin/merchants/{mid}/webhook-secret")
+def admin_set_webhook_secret(
+    mid: str,
+    body: WebhookSecretRequest,
+    request: Request,
+    admin_token: str | None = Header(default=None, alias="X-Crumbs-Admin-Token"),
+    db: Session = Depends(get_db),
+    settings=Depends(_settings),
+):
+    """Store a merchant's webhook signing secret REFERENCE (admin).
+
+    The database holds a ``secretref:env:<NAME>`` reference in production;
+    the material lives in the service environment and never touches the
+    database or this response. Fail-fast validations:
+
+      * an env reference whose variable is unset in THIS process is refused
+        (422 UNRESOLVABLE_REF) — a reference that cannot resolve would
+        silently fail every webhook;
+      * literal values (local SQLite dev only) are refused in strict mode
+        (CRUMBS_ENFORCE_SECRET_REFS=true → 422 SECRET_REF_REQUIRED) and the
+        known dev-default literal is refused on non-SQLite databases
+        (422 DEV_SECRET_REJECTED);
+      * a value under the ``secretref:`` scheme that is not a well-formed
+        env reference is refused (422 INVALID_SECRET_REF).
+    """
+    _require_admin(settings, admin_token)
+    merchant = db.get(Merchant, mid)
+    if merchant is None:
+        raise HTTPException(404, detail={"code": "MERCHANT_NOT_FOUND",
+                                         "message": f"no merchant {mid}"})
+
+    value = body.value
+    env_var = secret_ref_env_name(value)
+    if env_var is not None:
+        if resolve_secret(value) is None:
+            raise HTTPException(
+                422,
+                detail={"code": "UNRESOLVABLE_REF",
+                        "message": f"environment variable {env_var} is not set in "
+                                   "this process — set it before storing the reference"},
+            )
+        mode = "env-ref"
+    elif value.startswith(SECRETREF_SCHEME):
+        raise HTTPException(422, detail={"code": "INVALID_SECRET_REF",
+                                         "message": "value is not a well-formed "
+                                                    "secretref:env:<NAME> reference"})
+    else:
+        # Literal — local SQLite development only.
+        if settings.enforce_secret_refs:
+            raise HTTPException(
+                422,
+                detail={"code": "SECRET_REF_REQUIRED",
+                        "message": "literal webhook secrets are refused when "
+                                   "CRUMBS_ENFORCE_SECRET_REFS=true — store a "
+                                   "secretref:env:<NAME> reference instead"},
+            )
+        if value == webhooks.DEV_WEBHOOK_SECRET and not settings.database_url.startswith(
+            "sqlite"
+        ):
+            raise HTTPException(422, detail={"code": "DEV_SECRET_REJECTED",
+                                             "message": "the dev-default webhook "
+                                                        "secret is refused outside "
+                                                        "a local SQLite database"})
+        mode = "literal"
+
+    merchant.webhook_secret = value
+    audit(db, "merchant_webhook_secret_set", "merchant", mid, actor="admin",
+          payload={"mid": mid, "mode": mode, "env_var": env_var})
+    db.commit()
+    return {"merchant_id": mid, **_webhook_secret_view(merchant, settings)}
+
+
+@router.get("/admin/merchants/{mid}/webhook-secret")
+def admin_get_webhook_secret(
+    mid: str,
+    request: Request,
+    admin_token: str | None = Header(default=None, alias="X-Crumbs-Admin-Token"),
+    db: Session = Depends(get_db),
+    settings=Depends(_settings),
+):
+    """Masked configuration view — the stored value is never returned."""
+    _require_admin(settings, admin_token)
+    merchant = db.get(Merchant, mid)
+    if merchant is None:
+        raise HTTPException(404, detail={"code": "MERCHANT_NOT_FOUND",
+                                         "message": f"no merchant {mid}"})
+    return {"merchant_id": mid, **_webhook_secret_view(merchant, settings)}
+
+
+@router.delete("/admin/merchants/{mid}/webhook-secret")
+def admin_clear_webhook_secret(
+    mid: str,
+    request: Request,
+    admin_token: str | None = Header(default=None, alias="X-Crumbs-Admin-Token"),
+    db: Session = Depends(get_db),
+    settings=Depends(_settings),
+):
+    """Clear the merchant's webhook-secret configuration (webhooks then
+    fail closed with BAD_SIGNATURE until a new secret is configured)."""
+    _require_admin(settings, admin_token)
+    merchant = db.get(Merchant, mid)
+    if merchant is None:
+        raise HTTPException(404, detail={"code": "MERCHANT_NOT_FOUND",
+                                         "message": f"no merchant {mid}"})
+    merchant.webhook_secret = None
+    audit(db, "merchant_webhook_secret_cleared", "merchant", mid, actor="admin",
+          payload={"mid": mid})
+    db.commit()
+    return {"merchant_id": mid, "configured": False}
 
 
 # --- admin (revocation) -----------------------------------------------------

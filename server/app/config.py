@@ -88,6 +88,14 @@ class Settings(BaseSettings):
     webhook_default_ttl_seconds: int = 3600
     webhook_tolerance_seconds: int = 300  # replay window for signed webhooks
 
+    # --- Secret management (core/secrets.py) ------------------------------------
+    # When true, merchant webhook secrets stored as LITERAL values on a
+    # non-SQLite database resolve to nothing (fail closed): every merchant
+    # must use a `secretref:env:<NAME>` reference backed by a real
+    # environment variable. Local SQLite development is unaffected. Default
+    # false preserves v0.1 back-compatibility while deployments migrate.
+    enforce_secret_refs: bool = False
+
     # --- Receipt TTL -----------------------------------------------------------
     receipt_ttl_seconds: int = 30 * 24 * 3600  # 30 days (docs/ATTRIBUTION_PROTOCOL.md §2)
 

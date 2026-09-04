@@ -1,5 +1,9 @@
 # Crumbs attribution ledger — server dependencies (local MVP v0.1)
-# NOTE: pinning is loose for the MVP; freeze before any deployment.
+# Pinning is loose here for development. The DEPLOYMENT manifest is
+# server/requirements.lock — exact pins with SHA-256 hashes, generated with:
+#   uv pip compile requirements.txt --generate-hashes -o requirements.lock
+# Install it reproducibly with:
+#   uv pip install --require-hashes -r requirements.lock
 fastapi>=0.115,<1
 uvicorn[standard]>=0.30,<1
 pydantic>=2.7,<3

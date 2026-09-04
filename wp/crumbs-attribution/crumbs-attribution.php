@@ -30,39 +30,63 @@ define( 'CRUMBS_ATTRIBUTION_DIR', plugin_dir_path( __FILE__ ) );
  *
  *   crumbs_merchant_id   merchant id (m_...) issued by the ledger
  *   crumbs_api_url       ledger base URL — REQUIRED, no default endpoint
- *   crumbs_api_key       optional X-Crumbs-Key for conversion posts —
- *                        v0.1 dev-only: stored plaintext in wp_options and
- *                        NOT yet sent anywhere (no conversions path wired).
- *                        Move to a secret manager / encrypted option before
- *                        any real key is configured. When one is set, the
- *                        admin UI shows a warning.
+ *   crumbs_api_key       optional X-Crumbs-Key for conversion posts.
+ *                        Recommended source: the CRUMBS_MERCHANT_API_KEY
+ *                        constant in wp-config.php — the key then never
+ *                        touches the database. The wp_options fallback is a
+ *                        v0.1 dev scaffold (plaintext option; the admin UI
+ *                        warns while it is in use). Not yet sent anywhere
+ *                        (no conversions path wired).
  *   crumbs_consent_policy  'required' (default) | 'off' — never 'off' in production
  */
+function crumbs_api_key_source() {
+	if ( defined( 'CRUMBS_MERCHANT_API_KEY' ) && '' !== trim( (string) CRUMBS_MERCHANT_API_KEY ) ) {
+		return 'constant';
+	}
+	$option = get_option( 'crumbs_api_key', '' );
+	return '' === $option ? 'none' : 'option';
+}
+
+/**
+ * The effective merchant API key (never echoed into markup by the UI).
+ *
+ * 'constant' — CRUMBS_MERCHANT_API_KEY in wp-config.php (recommended: the
+ *              key never enters the database);
+ * 'option'   — legacy v0.1 wp_options value (plaintext at rest — dev-only
+ *              scaffold; the admin UI warns while it is in use);
+ * 'none'     — no key configured.
+ */
+function crumbs_api_key_value() {
+	if ( 'constant' === crumbs_api_key_source() ) {
+		return (string) CRUMBS_MERCHANT_API_KEY;
+	}
+	return (string) get_option( 'crumbs_api_key', '' );
+}
+
 function crumbs_get_settings() {
 	return array(
 		'merchant_id'     => get_option( 'crumbs_merchant_id', '' ),
 		'api_url'         => get_option( 'crumbs_api_url', '' ),
-		'api_key'         => get_option( 'crumbs_api_key', '' ),
+		'api_key'         => crumbs_api_key_value(),
+		'api_key_source'  => crumbs_api_key_source(),
 		'consent_policy'  => get_option( 'crumbs_consent_policy', 'required' ),
 	);
 }
 
 /**
- * Admin warning for a configured plaintext merchant key.
+ * Admin warning for a key stored as a plaintext wp_options value.
  *
- * Mirrors the server's webhook-secret guard pattern in spirit: the key is
- * optional, stored plaintext in wp_options (v0.1 dev scaffold), and not yet
- * sent anywhere. If an admin configures one, show a persistent warning that it
- * must move to a secret manager / encrypted option before any real key is
- * configured.
+ * Constant-provided keys (CRUMBS_MERCHANT_API_KEY in wp-config.php) are the
+ * recommended configuration and never warn. The wp_options path is a v0.1
+ * dev scaffold — while it is in use, the warning stays until the key moves
+ * to the constant (or an encrypted/secret-manager source).
  */
 function crumbs_admin_api_key_warning() {
-	$api_key = get_option( 'crumbs_api_key', '' );
-	if ( empty( $api_key ) ) {
+	if ( 'option' !== crumbs_api_key_source() ) {
 		return;
 	}
 	echo '<div class="notice notice-warning"><p>';
-	echo esc_html__( 'Crumbs Attribution: the merchant API key is stored as a plaintext option — v0.1 dev scaffold only. Move it to a secret manager / encrypted option before configuring a real key.', 'crumbs-attribution' );
+	echo esc_html__( 'Crumbs Attribution: the merchant API key is stored as a plaintext wp_options value (v0.1 dev scaffold). Define the CRUMBS_MERCHANT_API_KEY constant in wp-config.php so the key never touches the database.', 'crumbs-attribution' );
 	echo '</p></div>';
 }
 add_action( 'admin_notices', 'crumbs_admin_api_key_warning' );
@@ -266,9 +290,17 @@ function crumbs_settings_page() {
 				</tr>
 				<tr>
 					<th scope="row"><label for="crumbs_api_key">API key (optional)</label></th>
-					<td><input type="password" id="crumbs_api_key" name="crumbs_api_key"
-						value="<?php echo esc_attr( $settings['api_key'] ); ?>" class="regular-text" />
-						<p class="description"><?php echo esc_html( 'v0.1 dev-only: stored plaintext in wp_options and not yet sent anywhere. Move to a secret manager / encrypted option before configuring a real key.' ); ?></p>
+					<td>
+					<?php if ( 'constant' === $settings['api_key_source'] ) : ?>
+						<input type="password" id="crumbs_api_key" class="regular-text" value="••••••••" disabled="disabled" autocomplete="new-password" />
+						<p class="description"><?php echo esc_html( 'Provided by the CRUMBS_MERCHANT_API_KEY constant in wp-config.php — the key never touches the database (recommended).' ); ?></p>
+					<?php elseif ( 'option' === $settings['api_key_source'] ) : ?>
+						<input type="password" id="crumbs_api_key" name="crumbs_api_key" value="" class="regular-text" placeholder="••••••••" autocomplete="new-password" />
+						<p class="description"><?php echo esc_html( 'A key is currently stored as a plaintext wp_options value (v0.1 dev scaffold). Clear the field and save to remove it, or define the CRUMBS_MERCHANT_API_KEY constant in wp-config.php instead.' ); ?></p>
+					<?php else : ?>
+						<input type="password" id="crumbs_api_key" name="crumbs_api_key" value="" class="regular-text" autocomplete="new-password" />
+						<p class="description"><?php echo esc_html( 'Optional X-Crumbs-Key for conversion posts. Recommended: define the CRUMBS_MERCHANT_API_KEY constant in wp-config.php so the key never touches the database.' ); ?></p>
+					<?php endif; ?>
 					</td>
 				</tr>
 				<tr>
@@ -292,10 +324,26 @@ function crumbs_settings_page() {
 	<?php
 }
 
+/**
+ * Sanitize the API key option.
+ *
+ * A constant-provided key is authoritative: saving any settings form then
+ * clears the legacy wp_options row instead of writing a database copy of a
+ * constant key. Without a constant, a non-empty submitted value is stored
+ * (dev scaffold); an empty submission clears the option.
+ */
+function crumbs_sanitize_api_key( $value ) {
+	$value = sanitize_text_field( (string) $value );
+	if ( 'constant' === crumbs_api_key_source() ) {
+		return '';
+	}
+	return $value;
+}
+
 function crumbs_register_settings() {
 	register_setting( 'crumbs_attribution', 'crumbs_merchant_id', array( 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field' ) );
 	register_setting( 'crumbs_attribution', 'crumbs_api_url', array( 'type' => 'string', 'sanitize_callback' => 'esc_url_raw' ) );
-	register_setting( 'crumbs_attribution', 'crumbs_api_key', array( 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field' ) ); // STUB: plaintext option, dev-only — secret-manager/encrypted-option storage comes before real keys are supported
+	register_setting( 'crumbs_attribution', 'crumbs_api_key', array( 'type' => 'string', 'sanitize_callback' => 'crumbs_sanitize_api_key' ) );
 	register_setting( 'crumbs_attribution', 'crumbs_consent_policy', array( 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field' ) );
 }
 add_action( 'admin_init', 'crumbs_register_settings' );
