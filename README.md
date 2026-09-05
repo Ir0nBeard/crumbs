@@ -15,7 +15,7 @@ schedules the commission to the referring agent — on licensed payout rails.
 
 ![tests](https://img.shields.io/badge/tests-164%20green-brightgreen)
 ![license](https://img.shields.io/badge/license-MIT%20%2F%20GPL--2.0--or--later-blue)
-![version](https://img.shields.io/badge/version-0.1.0-lightgrey)
+![version](https://img.shields.io/badge/version-0.1.1-lightgrey)
 
 ## What's in the box
 
@@ -53,6 +53,8 @@ Full fresh-clone walkthrough (dev server + SQLite + SDK snippet): **[QUICKSTART.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — receipt lifecycle, carriers, ledger, consent; threat-model summary
 - [docs/ATTRIBUTION_PROTOCOL.md](docs/ATTRIBUTION_PROTOCOL.md) — the signed-receipt format, end to end
 - [docs/LISTINGS.md](docs/LISTINGS.md) — distribution channels and publish runbooks (npm, stores, MCP, CDN)
+- [docs/PRICING.md](docs/PRICING.md) — pricing in plain terms (free software; self-hosted; no per-receipt fees)
+- [docs/index.html](docs/index.html) — documentation entry point (rendered at <https://ir0nbeard.github.io/crumbs/>)
 - [SECURITY.md](SECURITY.md) — reporting vulnerabilities
 - [CONTRIBUTING.md](CONTRIBUTING.md) — how to contribute
 - [CHANGELOG.md](CHANGELOG.md) — release history (Keep a Changelog)

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crumbs — attribution &amp; referral settlement for agentic commerce</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+         max-width: 42rem; margin: 3rem auto; padding: 0 1.25rem; color: #1f2328; line-height: 1.55; }
+  h1 { font-size: 1.6rem; }
+  h2 { font-size: 1.15rem; margin-top: 2rem; }
+  a { color: #0969da; text-decoration: none; } a:hover { text-decoration: underline; }
+  ul { padding-left: 1.25rem; } li { margin: .35rem 0; }
+  .tag { color: #57606a; font-size: .9rem; }
+  code { background: #f6f8fa; padding: .1rem .3rem; border-radius: .3rem; font-size: .9em; }
+</style>
+</head>
+<body>
+<h1>Crumbs</h1>
+<p class="tag">v0.1.1 &middot; MIT / GPL-2.0-or-later &middot; open source</p>
+<p>Open-source, consent-native <strong>agent-journey attribution and referral
+settlement</strong> for agentic commerce: when an AI agent refers a buyer to a
+merchant and the buyer checks out, Crumbs records it with a signed attribution
+receipt and schedules the commission to the referring agent — on licensed
+payout rails.</p>
+
+<h2>Read the docs</h2>
+<ul>
+  <li><a href="https://github.com/Ir0nBeard/crumbs/blob/main/README.md">README</a> — overview, components, 60-second quick start</li>
+  <li><a href="https://github.com/Ir0nBeard/crumbs/blob/main/docs/PRICING.md">Pricing</a> — what Crumbs costs (free software; no hosted service yet)</li>
+  <li><a href="https://github.com/Ir0nBeard/crumbs/blob/main/QUICKSTART.md">QUICKSTART</a> — run the server, ledger, and SDK from a fresh clone</li>
+  <li><a href="https://github.com/Ir0nBeard/crumbs/blob/main/ARCHITECTURE.md">ARCHITECTURE</a> — receipt lifecycle, carriers, ledger, consent; threat-model summary</li>
+  <li><a href="https://github.com/Ir0nBeard/crumbs/blob/main/docs/ATTRIBUTION_PROTOCOL.md">Attribution protocol</a> — the signed-receipt format, end to end</li>
+  <li><a href="https://github.com/Ir0nBeard/crumbs/blob/main/docs/LISTINGS.md">Distribution &amp; listings</a> — channel matrix and publish runbooks</li>
+  <li><a href="https://github.com/Ir0nBeard/crumbs/blob/main/docs/SECRET_MANAGEMENT.md">Secret management</a> — credential inventory and rotation runbook</li>
+  <li><a href="https://github.com/Ir0nBeard/crumbs/blob/main/CHANGELOG.md">Changelog</a> — release history</li>
+  <li><a href="https://github.com/Ir0nBeard/crumbs/blob/main/SECURITY.md">Security</a> — reporting vulnerabilities</li>
+  <li><a href="https://github.com/Ir0nBeard/crumbs/blob/main/CONTRIBUTING.md">Contributing</a></li>
+</ul>
+
+<h2>Components</h2>
+<ul>
+  <li><a href="https://github.com/Ir0nBeard/crumbs/tree/main/server">Ledger server</a> — FastAPI; consent-gated journeys, idempotent conversions, verification, payout scheduling</li>
+  <li><a href="https://github.com/Ir0nBeard/crumbs/tree/main/sdk">JS SDK</a> — journey request, conversion stamping, receipt verification; zero dependencies</li>
+  <li><a href="https://github.com/Ir0nBeard/crumbs/tree/main/mcp">MCP server</a> — stdio JSON-RPC tools over the ledger API</li>
+  <li><a href="https://github.com/Ir0nBeard/crumbs/tree/main/ext">Chrome MV3 extension</a> — journey receipt viewer</li>
+  <li><a href="https://github.com/Ir0nBeard/crumbs/tree/main/wp">WordPress plugin</a> — consent-gated journey issuance for WooCommerce-class sites</li>
+  <li><a href="https://github.com/Ir0nBeard/crumbs/tree/main/shopify">Shopify app scaffold</a> — custom-app pilot</li>
+</ul>
+
+<p class="tag">Source: <a href="https://github.com/Ir0nBeard/crumbs">github.com/Ir0nBeard/crumbs</a></p>
+</body>
+</html>

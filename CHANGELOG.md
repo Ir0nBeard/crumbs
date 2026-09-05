@@ -9,7 +9,17 @@ stable).
 
 ### Added
 
-- (next)
+- **Public documentation entry point**: `docs/index.html` — a static landing
+  page that indexes the full documentation set (README, quick start,
+  architecture, attribution protocol, listings, secret management, changelog,
+  security) and is served as a GitHub Pages site at
+  <https://ir0nbeard.github.io/crumbs/>. The `docs/` folder is served as
+  plain static files (no Jekyll preprocessing).
+- **Pricing page** (`docs/PRICING.md`): states the v0.1 economics in plain
+  terms — all components are free open-source software, there is no hosted
+  service and no fee on receipts, conversions, or payout records; adopters
+  pay only for their own infrastructure, payout-rail network costs, and the
+  commissions they define on merchant programs.
 
 ## [0.1.1] - 2026-09-05
 

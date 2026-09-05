@@ -24,3 +24,7 @@ npm-debug.log*
 
 # Local release packaging output
 dist/
+
+# Internal working notes — never published
+docs/P3_SECURITY_REVIEW_FINAL_20260829.md
+docs/SESSION_NOTES.md
