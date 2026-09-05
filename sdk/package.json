@@ -1,7 +1,7 @@
 {
   "name": "@crumbs/sdk",
-  "version": "0.1.0",
-  "description": "Consent-native agent-journey attribution SDK (signed-attribution receipts). v0.1 — not yet published to npm.",
+  "version": "0.1.1",
+  "description": "Consent-native agent-journey attribution SDK (signed-attribution receipts). v0.1 \u2014 not yet published to npm.",
   "type": "module",
   "main": "crumbs.mjs",
   "exports": {

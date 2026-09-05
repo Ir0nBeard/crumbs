@@ -9,6 +9,12 @@ stable).
 
 ### Added
 
+- (next)
+
+## [0.1.1] - 2026-09-05
+
+### Added
+
 - **Store-ready release packaging** (offline builds; publishing stays a
   separate, credential-gated step):
   - `scripts/package_release.py` builds every offline distribution artifact

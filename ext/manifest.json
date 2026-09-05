@@ -1,11 +1,18 @@
 {
   "manifest_version": 3,
   "name": "Crumbs Journey Viewer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "View and manage your Crumbs attribution journeys and receipts. Opt-in per site; no data leaves your browser except explicit verify calls you trigger.",
-  "permissions": ["storage", "activeTab"],
-  "optional_permissions": ["scripting"],
-  "optional_host_permissions": ["https://*/*"],
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "optional_permissions": [
+    "scripting"
+  ],
+  "optional_host_permissions": [
+    "https://*/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },

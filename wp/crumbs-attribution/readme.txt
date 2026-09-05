@@ -4,7 +4,7 @@ Tags: attribution, agent, ai, commerce, consent
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 0.1.0
+Stable tag: 0.1.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -57,6 +57,9 @@ No. It only records attribution and requests payout *scheduling* from the
 ledger. Settlement runs through licensed rails.
 
 == Changelog ==
+
+= 0.1.1 =
+* Release packaging + distribution layer (SDK tarball, Chrome MV3 zip, WordPress zip, checksums).
 
 = 0.1.0 =
 * Initial scaffold: settings page, consent-gated server-side journey issuance,
