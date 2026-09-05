@@ -30,5 +30,5 @@
     "url": "git+https://github.com/Ir0nBeard/crumbs.git"
   },
   "homepage": "https://github.com/Ir0nBeard/crumbs",
-  "private": true
+  "private": false
 }
