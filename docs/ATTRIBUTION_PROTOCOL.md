@@ -73,6 +73,10 @@ region — so the "signed string" is unambiguous.
    where `consent` carries a basis (`explicit` | `gpp` | `tcf` | `88b`).
    The ledger **refuses issuance without a recorded consent basis**. Response:
    `201` with the signed receipt string, `rid`, `journey_id`, `agent_id`, `exp`.
+   Optional `agent_did` (did:pkh / CAIP-10) anchors the agent to an on-chain
+   identity: repeated journeys for one did resolve to the same `agent_id`, the
+   anchor is echoed in issuance and verify responses, and the wire receipt is
+   unchanged (see [X402_INTEROP.md](X402_INTEROP.md)).
 2. **Carriage** — the receipt is carried on one of four interchangeable
    carriers:
    - **Cookie** — the merchant server sets `__Host-crumbs_j` (Secure, HttpOnly,

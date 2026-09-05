@@ -23,6 +23,7 @@ from ..core.receipt import (
     parse_receipt,
     receipt_expired,
 )
+from ..core.did import is_did_pkh
 from ..core.ulid import make_ulid
 from ..db.models import (
     Agent,
@@ -63,6 +64,8 @@ E_IDEMPOTENT = "IDEMPOTENT_REPLAY"  # internal marker (API returns 200 + existin
 E_MALFORMED = "MALFORMED_RECEIPT"
 E_SURFACE_MISMATCH = "SURFACE_MISMATCH"
 E_UNVERIFIED_CART = "CART_VALUE_MISMATCH"
+E_INVALID_DID = "INVALID_AGENT_DID"
+E_AGENT_DID_CONFLICT = "AGENT_DID_CONFLICT"
 
 
 class LedgerError(Exception):
@@ -101,6 +104,7 @@ def issue_journey(
     client_ip: str | None = None,
     user_agent: str | None = None,
     agent_id: str | None = None,
+    agent_did: str | None = None,
     signing: SigningService,
     nonce_store,
     rate_limiter,
@@ -139,14 +143,41 @@ def issue_journey(
     if program is None:
         raise LedgerError(E_UNKNOWN_MERCHANT, f"no active program for merchant {mid}", 404)
 
+    if agent_did is not None and not is_did_pkh(agent_did):
+        raise LedgerError(E_INVALID_DID,
+                          "agent_did must be a did:pkh CAIP-10 identifier", 422)
+
+    # Agent resolution: a did:pkh anchor binds an internal ag_ id to an
+    # on-chain identity. When an anchored agent is issued a journey for the
+    # FIRST time we auto-register it (registry_ref = the did). Subsequent
+    # journeys for the same did resolve to the SAME agent id, so cross-merchant
+    # journeys of one identity stitch together (docs/ATTRIBUTION_PROTOCOL.md).
+    if agent_id is None and agent_did is not None:
+        existing = db.execute(
+            select(Agent).where(Agent.registry_ref == agent_did)
+        ).scalar_one_or_none()
+        if existing is not None:
+            agent_id = existing.aid
     if agent_id is None:
         agent_id = new_agent_id()
     agent = db.get(Agent, agent_id)
     if agent is None:
-        agent = Agent(aid=agent_id, status="active")
+        agent = Agent(aid=agent_id, status="active", registry_ref=agent_did)
         db.add(agent)
         audit(db, "agent_registered", "agent", agent_id, actor="system",
-              payload={"surface": surface})
+              payload={"surface": surface,
+                       **({"registry_ref": agent_did} if agent_did else {})})
+    elif agent_did is not None:
+        # Anchor attach on an existing row: allow when unset (backfill), reject
+        # when it would rebind an identity to a different did.
+        if agent.registry_ref is None:
+            agent.registry_ref = agent_did
+            audit(db, "agent_anchored", "agent", agent_id, actor="system",
+                  payload={"registry_ref": agent_did})
+        elif agent.registry_ref != agent_did:
+            raise LedgerError(E_AGENT_DID_CONFLICT,
+                              "agent id is already anchored to a different did",
+                              409)
 
     if agent.revoked or db.get(RevokedAgent, agent_id) is not None:
         raise LedgerError(E_REVOKED_AGENT, "agent is revoked", 403)
@@ -216,6 +247,7 @@ def issue_journey(
         "rid": signed["rid"],
         "journey_id": jid,
         "agent_id": agent_id,
+        "agent_did": agent.registry_ref,
         "exp": signed["exp"],
         "consent": {"basis": basis, "recorded": True,
                     "verified": consent_verdict["mode"]},
@@ -288,6 +320,7 @@ def issue_receipt_for_journey(
         "rid": signed["rid"],
         "journey_id": jid,
         "agent_id": journey.aid,
+        "agent_did": agent.registry_ref,
         "exp": signed["exp"],
     }
 
@@ -611,8 +644,11 @@ def verify_receipt(db: Session, receipt_str: str, signing: SigningService,
         code = E_UNKNOWN_KID if reason == "unknown_kid" else E_BAD_SIGNATURE
         return {"valid": False, "reason": code, "detail": "signature invalid"}
     rid, jid, aid = payload["rid"], payload["jid"], payload["aid"]
+    agent = db.get(Agent, aid)
     base = {"rid": rid, "jid": jid, "aid": aid, "mid": payload["mid"],
             "exp": payload["exp"], "journey": _journey_state(jid)}
+    if agent is not None and agent.registry_ref:
+        base["agent_did"] = agent.registry_ref
     if receipt_expired(payload):
         return {"valid": False, "reason": E_EXPIRED, **base}
     if db.get(RevokedReceipt, rid) is not None:

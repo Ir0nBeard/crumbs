@@ -20,6 +20,26 @@ stable).
   service and no fee on receipts, conversions, or payout records; adopters
   pay only for their own infrastructure, payout-rail network costs, and the
   commissions they define on merchant programs.
+- **did:pkh agent anchoring** (`POST /v1/journeys` now accepts an optional
+  `agent_did` CAIP-10 identifier): the ledger binds the agent to an on-chain
+  identity (`agents.registry_ref`), resolves repeated journeys for one did to
+  the same agent id (cross-merchant stitching), echoes the anchor in issuance
+  and `POST /v1/verify` responses, and rejects malformed dids (`422
+  INVALID_AGENT_DID`) or rebinding attempts (`409 AGENT_DID_CONFLICT`).
+  Unanchored journeys are unchanged; existing agents can be anchored later
+  (backfill). New audit events `agent_anchored`.
+- **Python x402 interop kit** (`sdk/python/crumbs_x402.py`, zero
+  dependencies): server-side helpers for Python x402 sellers mirroring the JS
+  SDK's carriers — `x402_referral_field()` (PAYMENT-RESPONSE referral, jid by
+  default, `refer="rid"` opt-in), `builder_code()` (`bc_crumbs`), did:pkh
+  helpers, and a thin `CrumbsLedgerClient` (`request_journey`,
+  `verify_receipt`) with no default endpoint. Parity with the JS SDK is
+  asserted in `tests/server/test_python_x402_kit.py`.
+- **Seller interop guide** (`docs/X402_INTEROP.md`, linked from
+  `docs/index.html`): wire an x402 seller into Crumbs end-to-end — anchored
+  journey, referral emission, settlement proof with `bc_crumbs` calldata.
+  Covered by `tests/server/test_did_anchor_interop.py`
+  (`test_referral_settlement_end_to_end`).
 
 ## [0.1.1] - 2026-09-05
 

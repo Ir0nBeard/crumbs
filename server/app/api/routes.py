@@ -59,6 +59,11 @@ class JourneyRequest(BaseModel):
     surface: str = Field(..., pattern="^(browser|api|chat)$")
     consent: ConsentModel | None = None
     agent_id: str | None = None
+    # did:pkh (CAIP-10) anchor — binds the agent to an on-chain identity so
+    # cross-merchant journeys of one identity stitch together. Validated
+    # server-side; stored in agents.registry_ref.
+    agent_did: str | None = Field(None, max_length=255,
+                                  description="did:pkh CAIP-10 agent identifier")
 
 
 class ConversionRequest(BaseModel):
@@ -186,6 +191,7 @@ def create_journey(
             client_ip=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             agent_id=body.agent_id,
+            agent_did=body.agent_did,
             signing=request.app.state.signing,
             nonce_store=request.app.state.nonce_store,
             rate_limiter=request.app.state.rate_limiter,
