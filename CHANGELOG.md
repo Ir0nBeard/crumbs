@@ -9,6 +9,26 @@ stable).
 
 ### Added
 
+- **Store-ready release packaging** (offline builds; publishing stays a
+  separate, credential-gated step):
+  - `scripts/package_release.py` builds every offline distribution artifact
+    in one pass: the npm SDK tarball (`npm pack`, respecting the package
+    `files` allowlist), the Chrome MV3 extension zip (manifest at the zip
+    root), and the WordPress plugin zip in wordpress.org layout (top-level
+    `crumbs-attribution/` folder) — plus `SHA256SUMS` and a machine-readable
+    `RELEASE_MANIFEST.json`. The version is single-sourced from
+    `sdk/package.json` and cross-checked against `ext/manifest.json` and the
+    plugin's `readme.txt` stable tag, so a forgotten bump fails the build.
+  - `docs/LISTINGS.md` — distribution-channel matrix and per-channel publish
+    runbooks (npm, Chrome Web Store, WordPress.org, Shopify, MCP registries,
+    CDN, GitHub Releases), with the account gates that apply before anything
+    is published.
+  - `ext/STORE_LISTING.md` — review-ready Chrome Web Store listing copy:
+    name/summary/description, single-purpose statement, permission
+    justification table, and privacy pointers.
+  - `scripts/run_all_tests.sh` now also runs the headless extension suite
+    (`tests/ext/`), so the local runner covers server, MCP, SDK, and
+    extension in one command.
 - **Headless browser-behaviour tests for the Chrome extension + a grant-flow
   correctness fix**:
   - New `tests/ext/` suite runs the extension's MV3 logic headlessly with a

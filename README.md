@@ -5,14 +5,15 @@ for agentic commerce: when an AI agent refers a buyer to a merchant and the
 buyer checks out, Crumbs records it with a signed attribution receipt and
 schedules the commission to the referring agent — on licensed payout rails.
 
-> **v0.1 — early development.** The receipt format (v1) and the core ledger are
-> implemented and tested; settlement rails, consent-provider integrations, and
-> store/registry listings are stubs (honest list in
+> **v0.1 — early development.** The receipt format (v1), the consent
+> verifier, per-merchant keying, secret-reference management, settlement-proof
+> recording, and the core ledger are implemented and tested; live payout-rail
+> settlement and store/registry listings are not yet shipped (honest list in
 > [CHANGELOG.md](CHANGELOG.md) and [ARCHITECTURE.md](ARCHITECTURE.md)). There
 > is **no hosted Crumbs service yet** — you run your own ledger instance and
 > point integrations at it with an explicit `apiUrl`/`CRUMBS_MCP_API_URL`.
 
-![tests](https://img.shields.io/badge/tests-81%20green-brightgreen)
+![tests](https://img.shields.io/badge/tests-164%20green-brightgreen)
 ![license](https://img.shields.io/badge/license-MIT%20%2F%20GPL--2.0--or--later-blue)
 ![version](https://img.shields.io/badge/version-0.1.0-lightgrey)
 
@@ -51,6 +52,7 @@ Full fresh-clone walkthrough (dev server + SQLite + SDK snippet): **[QUICKSTART.
 - [QUICKSTART.md](QUICKSTART.md) — run the server, ledger, and SDK from a fresh clone
 - [ARCHITECTURE.md](ARCHITECTURE.md) — receipt lifecycle, carriers, ledger, consent; threat-model summary
 - [docs/ATTRIBUTION_PROTOCOL.md](docs/ATTRIBUTION_PROTOCOL.md) — the signed-receipt format, end to end
+- [docs/LISTINGS.md](docs/LISTINGS.md) — distribution channels and publish runbooks (npm, stores, MCP, CDN)
 - [SECURITY.md](SECURITY.md) — reporting vulnerabilities
 - [CONTRIBUTING.md](CONTRIBUTING.md) — how to contribute
 - [CHANGELOG.md](CHANGELOG.md) — release history (Keep a Changelog)

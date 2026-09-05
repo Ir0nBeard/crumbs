@@ -21,3 +21,6 @@ npm-debug.log*
 
 # Secrets — never commit real keys; .env is local-only
 .env
+
+# Local release packaging output
+dist/
